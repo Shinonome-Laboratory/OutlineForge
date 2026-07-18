@@ -1,0 +1,1036 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title data-i18n="title">corpus.db · Outline DB 查看器</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; }
+body {
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  background: #f8fafc; color: #1e293b; min-height: 100vh;
+  display: flex; flex-direction: column;
+}
+/* ── Header ── */
+header {
+  background: #fff; border-bottom: 1px solid #e2e8f0;
+  padding: 12px 20px; display: flex; align-items: center; gap: 16px;
+  flex-shrink: 0;
+}
+header h1 { font-size: 15px; font-weight: 700; color: #0f172a; }
+header .badge { font-size: 10px; background: #ede9fe; color: #7c3aed; padding: 2px 8px; border-radius: 999px; font-weight: 600; }
+/* ── Toolbar ── */
+.toolbar {
+  display: flex; align-items: center; gap: 12px; padding: 8px 20px;
+  background: #fff; border-bottom: 1px solid #e2e8f0; flex-shrink: 0;
+}
+.toolbar input[type="file"] { display: none; }
+.toolbar button, .toolbar .file-label {
+  font-size: 11px; font-weight: 600; padding: 6px 14px; border-radius: 6px;
+  border: 1px solid #e2e8f0; background: #fff; color: #475569; cursor: pointer;
+  transition: all .15s;
+}
+.toolbar button:hover, .toolbar .file-label:hover {
+  background: #f1f5f9; border-color: #cbd5e1;
+}
+.toolbar .file-label.connected {
+  background: #f0fdf4; border-color: #86efac; color: #166534;
+}
+.toolbar .path { font-size: 10px; color: #94a3b8; font-family: 'Cascadia Code', 'Fira Code', monospace; }
+#refresh-btn { background: #fef3c7; border-color: #fcd34d; color: #92400e; }
+#refresh-btn:hover { background: #fde68a; border-color: #fbbf24; }
+/* ── Main ── */
+main {
+  flex: 1; overflow: hidden; display: flex; gap: 0;
+}
+/* ── Sidebar (Schema) ── */
+aside {
+  width: 300px; background: #fff; border-right: 1px solid #e2e8f0;
+  overflow-y: auto; flex-shrink: 0; padding: 12px 0;
+}
+aside h2 {
+  font-size: 10px; text-transform: uppercase; letter-spacing: .06em;
+  color: #94a3b8; padding: 8px 16px 6px; font-weight: 700;
+}
+.table-card {
+  margin: 4px 12px 12px; border: 1px solid #e2e8f0; border-radius: 8px;
+  overflow: hidden; cursor: pointer; transition: all .15s;
+}
+.table-card:hover { border-color: #818cf8; box-shadow: 0 0 0 2px rgba(129,140,248,.12); }
+.table-card.active { border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,.2); }
+.table-card .tname {
+  font-size: 12px; font-weight: 700; padding: 8px 12px;
+  background: #f8fafc; border-bottom: 1px solid #f1f5f9;
+  display: flex; align-items: center; gap: 6px;
+}
+.table-card .tname .icon { font-size: 14px; }
+.table-card .cols { padding: 4px 0; }
+.table-card .col {
+  font-size: 10px; padding: 3px 12px; display: flex; gap: 6px;
+  align-items: baseline; font-family: 'Cascadia Code', 'Fira Code', monospace;
+}
+.table-card .col .cname { color: #0f172a; font-weight: 600; }
+.table-card .col .ctype { color: #94a3b8; font-size: 9px; }
+.table-card .col .ckey { font-size: 8px; color: #f59e0b; margin-left: auto; }
+.table-card .col .cpk  { font-size: 8px; color: #6366f1; margin-left: auto; }
+.table-card .fks {
+  border-top: 1px solid #f1f5f9; padding: 6px 12px;
+  font-size: 9px; color: #94a3b8; line-height: 1.5;
+}
+.table-card .fks span { color: #f59e0b; }
+/* ── Content area ── */
+.content {
+  flex: 1; display: flex; flex-direction: column; overflow: hidden; background: #f8fafc;
+}
+.content-header {
+  padding: 12px 20px; font-size: 13px; font-weight: 700; color: #334155;
+  background: #fff; border-bottom: 1px solid #e2e8f0; flex-shrink: 0;
+  display: flex; align-items: center; gap: 8px;
+}
+.content-header .row-count { font-size: 10px; color: #94a3b8; font-weight: 400; }
+.content-body {
+  flex: 1; overflow: auto; padding: 12px 20px;
+}
+/* ── Table display ── */
+.data-table {
+  width: 100%; border-collapse: collapse; font-size: 11px;
+  background: #fff; border-radius: 8px; overflow: hidden;
+  border: 1px solid #e2e8f0;
+}
+.data-table th {
+  background: #f8fafc; padding: 8px 12px; text-align: left;
+  font-size: 10px; font-weight: 700; color: #64748b; white-space: nowrap;
+  border-bottom: 2px solid #e2e8f0; position: sticky; top: 0; z-index: 1;
+}
+.data-table td {
+  padding: 6px 12px; border-bottom: 1px solid #f1f5f9;
+  max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: #334155;
+}
+.data-table tr:hover td { background: #f8fafc; }
+.data-table .null { color: #cbd5e1; font-style: italic; }
+.data-table .num { font-family: 'Cascadia Code', 'Fira Code', monospace; text-align: right; }
+.data-table td.editable { cursor: pointer; transition: background .1s; }
+.data-table td.editable:hover { background: #ede9fe; outline: 2px solid #c4b5fd; outline-offset: -2px; }
+.data-table td input.cell-edit {
+  width: 100%; min-width: 80px; border: 2px solid #6366f1; border-radius: 4px;
+  padding: 2px 4px; font-size: 11px; font-family: inherit; background: #fff;
+  outline: none; box-sizing: border-box;
+}
+.data-table td.editing { padding: 1px 3px !important; }
+.del-btn {
+  background: none; border: none; cursor: pointer; font-size: 12px;
+  padding: 1px 4px; border-radius: 3px; color: #cbd5e1; line-height: 1;
+  transition: all .15s;
+}
+.del-btn:hover { color: #ef4444; background: #fef2f2; }
+/* ── Empty state ── */
+.empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  height: 100%; color: #94a3b8; font-size: 12px; gap: 8px;
+}
+.empty .icon { font-size: 48px; opacity: .4; }
+/* ── SQL runner ── */
+.sql-section {
+  border-top: 1px solid #e2e8f0; flex-shrink: 0; background: #fff;
+}
+.sql-bar {
+  display: flex; gap: 8px; padding: 8px 20px; align-items: center;
+}
+.sql-bar textarea {
+  flex: 1; font-family: 'Cascadia Code', 'Fira Code', monospace;
+  font-size: 11px; border: 1px solid #e2e8f0; border-radius: 6px;
+  padding: 8px 12px; resize: none; height: 36px; line-height: 1.4;
+  background: #f8fafc;
+}
+.sql-bar textarea:focus { outline: none; border-color: #818cf8; }
+.sql-bar button {
+  font-size: 11px; font-weight: 600; padding: 7px 16px; border-radius: 6px;
+  border: none; background: #6366f1; color: #fff; cursor: pointer; white-space: nowrap;
+}
+.sql-bar button:hover { background: #4f46e5; }
+.sql-result { max-height: 200px; overflow: auto; padding: 0 20px 12px; }
+.sql-error { color: #ef4444; font-size: 11px; padding: 4px 0; }
+/* ── Config defaults card ── */
+.config-card {
+  margin: 4px 12px 12px; padding: 10px 12px;
+  border: 1px dashed #e2e8f0; border-radius: 8px;
+}
+.config-card h3 { font-size: 10px; color: #94a3b8; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 6px; }
+.config-card .kv { font-size: 10px; display: flex; gap: 8px; padding: 2px 0; font-family: 'Cascadia Code', 'Fira Code', monospace; }
+.config-card .kv .key { color: #6366f1; min-width: 120px; }
+.config-card .kv .val { color: #475569; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1 data-i18n="title">📊 corpus.db · Outline</h1>
+  <span class="badge">SQLite</span>
+  <span style="flex:1"></span>
+  <button id="lang-switch" class="border border-gray-200 rounded-md px-2 py-0.5 text-[10px] bg-white hover:bg-gray-50 hover:border-indigo-300 hover:text-indigo-600 transition-all cursor-pointer font-medium" style="margin-right:10px;">🌐 中文</button>
+  <span class="path" id="db-path" data-i18n="not_loaded">未加载</span>
+</header>
+
+<div class="toolbar">
+  <input type="file" id="file-input" accept=".db,.sqlite,.sqlite3,.db3" onchange="loadFile(event)">
+  <label class="file-label" id="file-label" for="file-input" data-i18n="open_file">📂 打开 .db 文件</label>
+  <button onclick="loadDefault()" data-i18n="load_default">📌 加载默认路径</button>
+  <button onclick="refreshDB()" data-i18n-placeholder="title_refresh" id="refresh-btn" style="display:none;" data-i18n="refresh_db">🔄 刷新数据库</button>
+  <span class="path" id="status-msg"></span>
+  <span class="path" id="db-abs-path" style="display:none; margin-left:8px; color:#64748b;"></span>
+</div>
+
+<main>
+  <!-- ── Sidebar: Schema ── -->
+  <aside>
+    <h2 data-i18n="tables">📐 数据表</h2>
+    <div id="schema-cards"></div>
+    <h2 data-i18n="config_defaults">⚙️ 默认配置</h2>
+    <div class="config-card" id="config-card"></div>
+  </aside>
+
+  <!-- ── Content ── -->
+  <div class="content">
+    <div class="content-header" id="content-header">
+      <span data-i18n="select_table">选择一个表查看数据</span>
+    </div>
+    <div class="content-body" id="content-body">
+      <div class="empty">
+        <div class="icon">📋</div>
+        <div data-i18n="click_table">点击左侧表名查看数据，或使用下方 SQL 查询</div>
+      </div>
+    </div>
+    <!-- ── SQL Runner ── -->
+    <div class="sql-section">
+      <div class="sql-bar">
+        <textarea id="sql-input" data-i18n-placeholder="sql_placeholder" placeholder="SELECT / INSERT / UPDATE / DELETE …" rows="1"></textarea>
+        <button onclick="runSQL()" data-i18n="sql_run">▶ 执行</button>
+      </div>
+      <div class="sql-result" id="sql-result"></div>
+    </div>
+  </div>
+</main>
+
+<script>
+// ═══ I18N ═══════════════════════════════════════
+const I18N = {
+  zh: {
+    title: "📊 corpus.db · Outline",
+    not_loaded: "未加载",
+    open_file: "📂 打开 .db 文件",
+    load_default: "📌 加载默认路径",
+    refresh_db: "🔄 刷新数据库",
+    sqlite_badge: "SQLite",
+    tables: "📐 数据表",
+    config_defaults: "⚙️ 默认配置",
+    select_table: "选择一个表查看数据",
+    click_table: "点击左侧表名查看数据，或使用下方 SQL 查询",
+    click_table_rw: "点击左侧表名查看数据，SQL 框支持增删改查",
+    sql_placeholder: "SELECT / INSERT / UPDATE / DELETE …",
+    sql_run: "▶ 执行",
+    loaded_file: "✓ 已加载 · {name} ({size} KB) · 只读模式",
+    loaded_api: "✓ 已加载 · {path} · 读写模式",
+    err_open: "✗ 无法打开文件: {msg}",
+    err_default: "✗ 默认路径不可用: {msg}（DB 尚未创建，请先用文件选择器）",
+    load_db_first: "请先加载数据库文件",
+    table_empty: "表 \"{name}\" 为空",
+    use_sql_insert: "使用下方 SQL 框插入数据",
+    dblclick_edit: "双击单元格编辑",
+    pk_readonly: "主键不可编辑",
+    dblclick_to_edit: "双击编辑",
+    local_readonly: "本地文件只读，请通过「加载默认路径」从服务器打开",
+    del_row: "删除此行",
+    delete_confirm: "删除 {tname} 中 {pk}={val} 的行？",
+    cascade_warn: "\\n\\n⚠ 将级联删除：{tables}",
+    executing: "执行中...",
+    exec_ok: "✅ 执行成功 · {n} 行受影响",
+    exec_ok_simple: "执行成功。",
+    query_ok: "查询成功，无返回行。",
+    rows_label: "{n} 行",
+    db_refreshed: "✅ 数据库已刷新",
+    local_no_refresh: "本地文件模式不支持刷新。请重新选择文件。",
+    sql_write_only: "写入操作需要从服务器加载数据库（点击「📌 加载默认路径」）。当前为本地文件模式，仅支持读取。",
+    title_refresh: "重新加载数据库以反映写入变更",
+  },
+  en: {
+    title: "📊 corpus.db · Outline",
+    not_loaded: "Not loaded",
+    open_file: "📂 Open .db File",
+    load_default: "📌 Load Default Path",
+    refresh_db: "🔄 Refresh DB",
+    sqlite_badge: "SQLite",
+    tables: "📐 Tables",
+    config_defaults: "⚙️ Defaults",
+    select_table: "Select a table to view data",
+    click_table: "Click a table on the left to view data, or use SQL below",
+    click_table_rw: "Click a table on the left to view data. SQL supports CRUD.",
+    sql_placeholder: "SELECT / INSERT / UPDATE / DELETE …",
+    sql_run: "▶ Run",
+    loaded_file: "✓ Loaded · {name} ({size} KB) · Read-only",
+    loaded_api: "✓ Loaded · {path} · Read-write",
+    err_open: "✗ Cannot open file: {msg}",
+    err_default: "✗ Default path unavailable: {msg} (DB not yet created, use file picker)",
+    load_db_first: "Please load a database file first",
+    table_empty: "Table \"{name}\" is empty",
+    use_sql_insert: "Use the SQL box below to insert data",
+    dblclick_edit: "Double-click cell to edit",
+    pk_readonly: "Primary key — read only",
+    dblclick_to_edit: "Double-click to edit",
+    local_readonly: "Local file is read-only. Load via \"Load Default Path\" from server.",
+    del_row: "Delete this row",
+    delete_confirm: "Delete row where {pk}={val} in {tname}?",
+    cascade_warn: "\\n\\n⚠ Will cascade delete: {tables}",
+    executing: "Running...",
+    exec_ok: "✅ Success · {n} row(s) affected",
+    exec_ok_simple: "Success.",
+    query_ok: "Query OK, no rows returned.",
+    rows_label: "{n} rows",
+    db_refreshed: "✅ Database refreshed",
+    local_no_refresh: "Local file mode does not support refresh. Please re-select the file.",
+    sql_write_only: "Write operations require loading from server (click \"📌 Load Default Path\"). Local file mode is read-only.",
+    title_refresh: "Reload database to reflect write changes",
+  },
+  ja: {
+    title: "📊 corpus.db · Outline",
+    not_loaded: "未読込",
+    open_file: "📂 .db ファイルを開く",
+    load_default: "📌 デフォルトパス読込",
+    refresh_db: "🔄 DB 再読込",
+    sqlite_badge: "SQLite",
+    tables: "📐 テーブル",
+    config_defaults: "⚙️ デフォルト設定",
+    select_table: "テーブルを選択してデータを表示",
+    click_table: "左のテーブル名をクリックしてデータ表示、または下のSQLを使用",
+    click_table_rw: "左のテーブル名をクリック。SQLでCRUD操作可能",
+    sql_placeholder: "SELECT / INSERT / UPDATE / DELETE …",
+    sql_run: "▶ 実行",
+    loaded_file: "✓ 読込完了 · {name} ({size} KB) · 読取専用",
+    loaded_api: "✓ 読込完了 · {path} · 読書両用",
+    err_open: "✗ ファイルを開けません: {msg}",
+    err_default: "✗ デフォルトパスが利用不可: {msg}（DB未作成、ファイル選択を使用）",
+    load_db_first: "先にデータベースファイルを読み込んでください",
+    table_empty: "テーブル \"{name}\" は空です",
+    use_sql_insert: "下のSQLボックスでデータを挿入",
+    dblclick_edit: "セルをダブルクリックで編集",
+    pk_readonly: "主キー — 編集不可",
+    dblclick_to_edit: "ダブルクリックで編集",
+    local_readonly: "ローカルファイルは読取専用。「デフォルトパス読込」からサーバー経由で開いてください。",
+    del_row: "この行を削除",
+    delete_confirm: "{tname} の {pk}={val} の行を削除しますか？",
+    cascade_warn: "\\n\\n⚠ 連鎖削除されます：{tables}",
+    executing: "実行中...",
+    exec_ok: "✅ 成功 · {n} 行が影響を受けました",
+    exec_ok_simple: "実行成功。",
+    query_ok: "クエリ成功、返却行なし。",
+    rows_label: "{n} 行",
+    db_refreshed: "✅ データベースを再読込しました",
+    local_no_refresh: "ローカルファイルモードは再読込非対応。ファイルを再選択してください。",
+    sql_write_only: "書込操作はサーバーから読込が必要（「📌 デフォルトパス読込」をクリック）。現在ローカルファイルモード（読取専用）。",
+    title_refresh: "書込変更を反映するためにデータベースを再読込",
+  }
+};
+
+let currentLang = (function() {
+  const saved = localStorage.getItem('outline_lang');
+  return (saved && I18N[saved]) ? saved : 'zh';
+})();
+
+function t(key, vars) {
+  let s = (I18N[currentLang] && I18N[currentLang][key]) || (I18N.zh && I18N.zh[key]) || key;
+  if (vars) Object.keys(vars).forEach(k => s = s.replace(new RegExp('\\{' + k + '\\}', 'g'), vars[k]));
+  return s;
+}
+
+// Init lang selector
+// 语言标签映射
+const LANG_LABELS = { zh: '中文', en: 'English', ja: '日本語' };
+const LANG_ORDER = ['zh', 'en', 'ja'];
+
+// 初始化语言按钮
+(function() {
+  const btn = document.getElementById('lang-switch');
+  if (btn) btn.textContent = '🌐 ' + (LANG_LABELS[currentLang] || '中文');
+  document.documentElement.lang = currentLang;
+})();
+
+// Apply all i18n elements
+function applyAllI18N() {
+  document.documentElement.lang = currentLang;
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const key = el.getAttribute('data-i18n');
+    if (['INPUT','TEXTAREA'].includes(el.tagName)) return;
+    el.textContent = t(key);
+  });
+  document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+    el.placeholder = t(el.getAttribute('data-i18n-placeholder'));
+  });
+  const lb = document.getElementById('lang-switch');
+  if (lb) lb.textContent = '🌐 ' + LANG_LABELS[currentLang];
+  if (_lastStatusKey) {
+    STATUS.textContent = t(_lastStatusKey, _lastStatusVars);
+  }
+  renderSchema();
+  if (activeTable) loadTableData(activeTable);
+  if (db) renderRowCounts();
+}
+
+// Lang switch handler
+document.getElementById('lang-switch').addEventListener('click', function() {
+  const idx = LANG_ORDER.indexOf(currentLang);
+  currentLang = LANG_ORDER[(idx + 1) % LANG_ORDER.length];
+  localStorage.setItem('outline_lang', currentLang);
+  // Notify parent window of language change
+  if (window.parent && window.parent !== window) {
+    window.parent.postMessage({ type: 'lang-change', lang: currentLang }, '*');
+  }
+  applyAllI18N();
+});
+
+// Listen for lang changes from parent window (iframe mode)
+window.addEventListener('message', function(e) {
+  if (e.data && e.data.type === 'lang-change' && e.data.lang && I18N[e.data.lang]) {
+    currentLang = e.data.lang;
+    localStorage.setItem('outline_lang', currentLang);
+    applyAllI18N();
+  }
+});
+
+// Listen for storage events (cross-tab sync)
+window.addEventListener('storage', function(e) {
+  if (e.key === 'outline_lang' && e.newValue && I18N[e.newValue]) {
+    currentLang = e.newValue;
+    applyAllI18N();
+  }
+});
+
+// ═══ Schema definition ═══
+const SCHEMA = {
+  videos: {
+    columns: [
+      { name: 'id',             type: 'INTEGER', pk: true },
+      { name: 'name',           type: 'TEXT',    nn: true },
+      { name: 'path',           type: 'TEXT',    nn: true },
+      { name: 'duration',       type: 'REAL' },
+      { name: 'file_size',      type: 'INTEGER' },
+      { name: 'status',         type: 'TEXT',    default: "'pending'" },
+      { name: 'error_message',  type: 'TEXT' },
+      { name: 'uploaded_at',    type: 'TEXT',    nn: true },
+    ],
+    fks: [],
+  },
+  corpus_paragraphs: {
+    columns: [
+      { name: 'id',              type: 'INTEGER', pk: true },
+      { name: 'video_id',        type: 'INTEGER', nn: true, fk: 'videos(id)' },
+      { name: 'paragraph_index', type: 'INTEGER', nn: true },
+      { name: 'start_time',      type: 'REAL',    nn: true },
+      { name: 'end_time',        type: 'REAL',    nn: true },
+      { name: 'text',            type: 'TEXT',    nn: true },
+    ],
+    fks: [
+      'FOREIGN KEY (video_id) → videos(id)',
+    ],
+  },
+  course_topics: {
+    columns: [
+      { name: 'id',               type: 'INTEGER', pk: true },
+      { name: 'video_id',         type: 'INTEGER', nn: true, fk: 'videos(id)' },
+      { name: 'start_para_index', type: 'INTEGER', nn: true },
+      { name: 'end_para_index',   type: 'INTEGER', nn: true },
+      { name: 'start_time',       type: 'REAL',    nn: true },
+      { name: 'end_time',         type: 'REAL',    nn: true },
+      { name: 'topic_name',       type: 'TEXT',    nn: true },
+      { name: 'subtree_json',     type: 'TEXT' },
+    ],
+    fks: [
+      'FOREIGN KEY (video_id) → videos(id)',
+    ],
+  },
+  config: {
+    columns: [
+      { name: 'key',   type: 'TEXT', pk: true },
+      { name: 'value', type: 'TEXT', nn: true },
+    ],
+    fks: [],
+  },
+};
+
+const CONFIG_DEFAULTS = [
+  ['ob_llm_model',        'qwen2.5:14b-instruct'],
+  ['ob_llm_temperature',  '0.0'],
+  ['ob_max_topics',       'auto'],
+  ['ob_prompt_round1',    'You are an expert curriculum designer and instructional analyst. Below is the complete transcript of a classroom lecture…'],
+  ['ob_prompt_round2',    'You are a subject knowledge structure analyst. Below is the teaching content for the topic…'],
+];
+
+// ═══ Render schema sidebar ═══
+// Discover ALL real tables from the loaded DB (falling back to the static
+// SCHEMA before a DB is open). Known tables keep their rich hand-written
+// definition; any other table's columns are derived live via PRAGMA.
+function getAllTableNames() {
+  const known = Object.keys(SCHEMA);
+  if (!db) return known;
+  let names = [];
+  try {
+    const res = db.exec("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name");
+    if (res.length > 0) names = res[0].values.map(r => r[0]);
+  } catch (e) { return known; }
+  // Known tables first (preserve their hand-written order), then the rest A→Z.
+  const knownPresent = known.filter(n => names.includes(n));
+  const rest = names.filter(n => !known.includes(n)).sort();
+  return knownPresent.concat(rest);
+}
+
+function getTableDef(tname) {
+  if (SCHEMA[tname]) return SCHEMA[tname];
+  // Derive columns live from PRAGMA for tables not in the static schema.
+  const def = { columns: [], fks: [] };
+  if (!db) return def;
+  try {
+    const res = db.exec(`PRAGMA table_info("${tname}")`);
+    if (res.length > 0) {
+      for (const row of res[0].values) {
+        // PRAGMA row: [cid, name, type, notnull, dflt_value, pk]
+        def.columns.push({
+          name: row[1],
+          type: row[2] || '',
+          nn: !!row[3],
+          default: (row[4] !== null && row[4] !== undefined) ? String(row[4]) : undefined,
+          pk: row[5] > 0,
+        });
+      }
+    }
+  } catch (e) { /* ignore */ }
+  return def;
+}
+
+function renderSchema() {
+  const container = document.getElementById('schema-cards');
+  let html = '';
+  for (const tname of getAllTableNames()) {
+    const tdef = getTableDef(tname);
+    html += `<div class="table-card" onclick="selectTable('${tname}')" id="card-${tname}">
+      <div class="tname">
+        <span class="icon">📄</span> ${tname}
+      </div>
+      <div class="cols">`;
+    for (const col of tdef.columns) {
+      let badge = '';
+      if (col.pk) badge = '<span class="cpk">PK</span>';
+      else if (col.fk) badge = '<span class="ckey">FK</span>';
+      html += `<div class="col">
+        <span class="cname">${col.name}</span>
+        <span class="ctype">${col.type}${col.nn ? ' NOT NULL' : ''}${col.default ? ' DEFAULT ' + col.default : ''}</span>
+        ${badge}
+      </div>`;
+    }
+    html += `</div>`;
+    if (tdef.fks.length > 0) {
+      html += `<div class="fks">`;
+      for (const fk of tdef.fks) {
+        html += `<span>🔗</span> ${fk}<br>`;
+      }
+      html += `</div>`;
+    }
+    html += `</div>`;
+  }
+  container.innerHTML = html;
+
+  // Config defaults
+  const cfgCard = document.getElementById('config-card');
+  cfgCard.innerHTML = CONFIG_DEFAULTS.map(([k, v]) =>
+    `<div class="kv"><span class="key">${k}</span><span class="val">${v.length > 60 ? v.slice(0,60)+'…' : v}</span></div>`
+  ).join('');
+}
+
+renderSchema();
+
+// ═══ SQL.js ═══
+var db = null;  // var (not let): hoisted, so the top-level renderSchema() above (which reads db via getAllTableNames) doesn't hit the let TDZ and crash the whole script
+const STATUS = document.getElementById('status-msg');
+const DB_PATH = document.getElementById('db-path');
+
+let _lastStatusKey = null, _lastStatusVars = null, _lastStatusOk = true;
+
+function setStatus(keyOrMsg, varsOrOk, okFlag) {
+  // Support two calling conventions:
+  //   setStatus('plain text', ok)           — legacy, no re-render on lang switch
+  //   setStatus(key, vars, ok)              — i18n key + vars, re-renders on lang switch
+  let msg, ok;
+  if (typeof varsOrOk === 'object' && varsOrOk !== null) {
+    // i18n mode: key + vars object + ok
+    _lastStatusKey = keyOrMsg;
+    _lastStatusVars = varsOrOk;
+    _lastStatusOk = okFlag !== false;
+    msg = t(keyOrMsg, varsOrOk);
+    ok = okFlag !== false;
+  } else {
+    // plain mode
+    _lastStatusKey = null;
+    _lastStatusVars = null;
+    _lastStatusOk = true;
+    msg = keyOrMsg;
+    ok = varsOrOk !== false;
+  }
+  STATUS.textContent = msg;
+  STATUS.style.color = ok ? '#16a34a' : '#ef4444';
+}
+
+async function initSQL() {
+  const SQL = await initSqlJs({ locateFile: f => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${f}` });
+  return SQL;
+}
+
+const SQLPromise = initSQL();
+
+async function loadFile(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const buf = await file.arrayBuffer();
+  const SQL = await SQLPromise;
+  try {
+    db = new SQL.Database(new Uint8Array(buf));
+    dbSource = 'file';
+    DB_PATH.textContent = file.name;
+    setStatus('loaded_file', {name: file.name, size: (file.size/1024).toFixed(1)}, true);
+    document.getElementById('file-label').classList.add('connected');
+    document.getElementById('refresh-btn').style.display = 'none';
+    document.getElementById('content-body').innerHTML = '<div class="empty"><div class="icon">📋</div><div>' + t('click_table_rw') + '</div></div>';
+    renderSchema();
+    renderRowCounts();
+  } catch (e) {
+    setStatus('err_open', {msg: e.message}, false);
+  }
+}
+
+async function loadDefault() {
+  try {
+    // Fetch the database from the outline API
+    const path = '/api/outline/db';
+    const resp = await fetch(path + '?t=' + Date.now());
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const buf = await resp.arrayBuffer();
+    const SQL = await SQLPromise;
+    db = new SQL.Database(new Uint8Array(buf));
+    dbSource = 'api';
+    DB_PATH.textContent = '00-data/corpus.db';
+    setStatus('loaded_api', {path: '00-data/corpus.db'}, true);
+    document.getElementById('file-label').classList.add('connected');
+    document.getElementById('refresh-btn').style.display = 'inline-block';
+    document.getElementById('content-body').innerHTML = '<div class="empty"><div class="icon">📋</div><div>' + t('click_table') + '</div></div>';
+    renderSchema();
+    renderRowCounts();
+    // Fetch the absolute filesystem path from the server
+    try {
+      const pathResp = await fetch('/api/outline/db-path');
+      if (pathResp.ok) {
+        const pathInfo = await pathResp.json();
+        const absEl = document.getElementById('db-abs-path');
+        if (absEl) { absEl.textContent = '📁 ' + pathInfo.absolute_path; absEl.style.display = ''; }
+      }
+    } catch (e) { /* non-fatal: keep relative path */ }
+  } catch (e) {
+    setStatus('err_default', {msg: e.message}, false);
+  }
+}
+
+function renderRowCounts() {
+  if (!db) return;
+  for (const tname of getAllTableNames()) {
+    try {
+      const result = db.exec(`SELECT COUNT(*) AS cnt FROM "${tname}"`);
+      const card = document.getElementById(`card-${tname}`);
+      if (result.length > 0 && card) {
+        const cnt = result[0].values[0][0];
+        const tnameEl = card.querySelector('.tname');
+        if (!tnameEl.querySelector('.cnt')) {
+          const span = document.createElement('span');
+          span.className = 'cnt';
+          span.style.cssText = 'font-size:10px;color:#94a3b8;font-weight:400;margin-left:auto;';
+          tnameEl.appendChild(span);
+        }
+        card.querySelector('.cnt').textContent = t('rows_label', {n: cnt});
+      }
+    } catch (e) { /* table might not exist */ }
+  }
+}
+
+let activeTable = null;
+
+function getPK(tname) {
+  const t = getTableDef(tname);
+  if (!t || !t.columns.length) return 'id';
+  const pk = t.columns.find(c => c.pk);
+  return pk ? pk.name : 'id';
+}
+
+function getColType(tname, colName) {
+  const t = getTableDef(tname);
+  if (!t) return 'TEXT';
+  const col = t.columns.find(c => c.name === colName);
+  return col ? col.type : 'TEXT';
+}
+
+function selectTable(tname) {
+  activeTable = tname;
+  document.querySelectorAll('.table-card').forEach(c => c.classList.remove('active'));
+  document.getElementById(`card-${tname}`)?.classList.add('active');
+  if (!db) {
+    document.getElementById('content-body').innerHTML = '<div class="empty"><div class="icon">⚠️</div><div>' + t('load_db_first') + '</div></div>';
+    return;
+  }
+  loadTableData(tname);
+}
+
+function loadTableData(tname) {
+  try {
+    const result = db.exec(`SELECT * FROM "${tname}"`);
+    const header = document.getElementById('content-header');
+    const body = document.getElementById('content-body');
+
+    if (result.length === 0) {
+      header.innerHTML = `<span>📄 ${tname}</span><span class="row-count">${t('rows_label', {n: 0})}</span>`;
+      body.innerHTML = `<div class="empty"><div class="icon">📭</div><div>${t('table_empty', {name: tname})}<br><span style="font-size:10px;color:#94a3b8">${t('use_sql_insert')}</span></div></div>`;
+      return;
+    }
+
+    const cols = result[0].columns;
+    const rows = result[0].values;
+    const pk = getPK(tname);
+    const pkIdx = cols.indexOf(pk);
+    header.innerHTML = `<span>📄 ${tname}</span><span class="row-count">${t('rows_label', {n: rows.length})} <span style="color:#a78bfa;font-size:9px;">${t('dblclick_edit')}</span></span>`;
+
+    let html = '<table class="data-table"><thead><tr>';
+    html += '<th style="width:28px;"></th>';
+    html += '<th>#</th>';
+    for (const col of cols) {
+      html += `<th>${escapeHtml(col)}${col === pk ? ' <span style="color:#a78bfa;font-size:8px">PK</span>' : ''}</th>`;
+    }
+    html += '</tr></thead><tbody>';
+    for (let i = 0; i < rows.length; i++) {
+      html += `<tr data-row="${i}">`;
+      html += `<td style="text-align:center;padding:2px;"><button class="del-btn" data-row="${i}" title="${t('del_row')}">×</button></td>`;
+      html += `<td class="num" style="color:#94a3b8">${i + 1}</td>`;
+      for (let j = 0; j < rows[i].length; j++) {
+        const val = rows[i][j];
+        const colName = cols[j];
+        const isPK = colName === pk;
+        const rawVal = val === null ? '' : String(val);
+        const cellClass = isPK ? 'num' : (typeof val === 'number' ? 'num editable' : 'editable');
+        const cellTitle = isPK ? t('pk_readonly') : t('dblclick_to_edit');
+        if (val === null) {
+          html += `<td class="null editable" data-col="${escapeHtml(colName)}" data-val="" title="${cellTitle}">NULL</td>`;
+        } else if (typeof val === 'number') {
+          html += `<td class="${cellClass}" data-col="${escapeHtml(colName)}" data-val="${rawVal}" title="${cellTitle}">${val}</td>`;
+        } else {
+          const display = rawVal.length > 200 ? rawVal.slice(0, 200) + '…' : rawVal;
+          html += `<td class="${cellClass}" data-col="${escapeHtml(colName)}" data-val="${rawVal.replace(/"/g, '&quot;')}" title="${escapeHtml(cellTitle + ': ' + rawVal.slice(0, 100))}">${escapeHtml(display)}</td>`;
+        }
+      }
+      html += '</tr>';
+    }
+    html += '</tbody></table>';
+    body.innerHTML = html;
+
+    // Attach double-click handler for inline editing
+    body.querySelectorAll('td.editable').forEach(td => {
+      td.addEventListener('dblclick', function(e) { startCellEdit(this, tname, pk, pkIdx, rows); });
+    });
+
+    // Attach delete button handlers
+    body.querySelectorAll('.del-btn').forEach(btn => {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        deleteRow(this, tname, pk, pkIdx, rows);
+      });
+    });
+  } catch (e) {
+    document.getElementById('content-body').innerHTML = `<div class="empty"><div class="icon">❌</div><div>${escapeHtml(e.message)}</div></div>`;
+  }
+}
+
+// ═══ Inline cell editing ═══
+function startCellEdit(td, tname, pk, pkIdx, rows) {
+  if (td.querySelector('input')) return; // already editing
+  if (dbSource !== 'api') {
+    td.style.background = '#fef3c7';
+    td.title = t('local_readonly');
+    setTimeout(() => { td.style.background = ''; td.title = t('dblclick_to_edit'); }, 2000);
+    return;
+  }
+  const rowIdx = parseInt(td.parentElement.dataset.row);
+  const colName = td.dataset.col;
+  const originalVal = td.dataset.val;
+  const isNull = td.classList.contains('null');
+
+  td.classList.add('editing');
+  td.innerHTML = '';
+  const input = document.createElement('input');
+  input.className = 'cell-edit';
+  input.value = isNull ? '' : originalVal;
+  input.style.width = Math.max(80, td.offsetWidth) + 'px';
+  td.appendChild(input);
+  input.focus();
+  input.select();
+
+  async function save() {
+    const newVal = input.value.trim();
+    if (newVal === (isNull ? '' : originalVal)) { cancel(); return; } // no change
+
+    const pkVal = rows[rowIdx][pkIdx];
+    const colType = getColType(tname, colName);
+    const isNum = colType === 'INTEGER' || colType === 'REAL';
+
+    // Build safe SQL
+    let setClause;
+    if (newVal === '' || newVal.toUpperCase() === 'NULL') {
+      setClause = `"${colName}" = NULL`;
+    } else if (isNum) {
+      const num = Number(newVal);
+      if (isNaN(num)) { td.style.background = '#fef2f2'; cancel(); return; }
+      setClause = `"${colName}" = ${num}`;
+    } else {
+      setClause = `"${colName}" = '${newVal.replace(/'/g, "''")}'`;
+    }
+    const sql = `UPDATE "${tname}" SET ${setClause} WHERE "${pk}" = ${typeof pkVal === 'number' ? pkVal : `'${String(pkVal).replace(/'/g, "''")}'`}`;
+
+    try {
+      const resp = await fetch('/api/outline/db-table/_sql', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sql })
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.detail || `HTTP ${resp.status}`);
+      }
+      // Update DOM
+      const display = newVal || 'NULL';
+      td.dataset.val = newVal;
+      td.classList.remove('null', 'num');
+      if (newVal === '') { td.classList.add('null'); td.textContent = 'NULL'; }
+      else if (isNum) { td.classList.add('num'); td.textContent = Number(newVal); }
+      else { td.textContent = newVal.length > 200 ? newVal.slice(0,200)+'…' : newVal; }
+      td.classList.remove('editing');
+      // Flash green
+      td.style.background = '#dcfce7';
+      setTimeout(() => { td.style.background = ''; }, 800);
+    } catch (e) {
+      td.style.background = '#fef2f2';
+      td.classList.remove('editing');
+      td.innerHTML = isNull ? 'NULL' : escapeHtml(originalVal.length > 200 ? originalVal.slice(0,200)+'…' : originalVal);
+      setTimeout(() => { td.style.background = ''; }, 1200);
+    }
+  }
+
+  function cancel() {
+    td.classList.remove('editing');
+    td.innerHTML = isNull ? 'NULL' : escapeHtml(originalVal.length > 200 ? originalVal.slice(0,200)+'…' : originalVal);
+    if (isNull) td.classList.add('null');
+  }
+
+  input.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') { e.preventDefault(); save(); }
+    if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+  });
+  input.addEventListener('blur', function() {
+    // Small delay so Enter/Escape can fire first
+    setTimeout(() => { if (td.contains(input)) save(); }, 150);
+  });
+}
+
+async function deleteRow(btn, tname, pk, pkIdx, rows) {
+  if (dbSource !== 'api') {
+    btn.style.color = '#f59e0b';
+    setTimeout(() => { btn.style.color = ''; }, 1500);
+    return;
+  }
+  const rowIdx = parseInt(btn.dataset.row);
+  const pkVal = rows[rowIdx][pkIdx];
+  const pkStr = typeof pkVal === 'number' ? pkVal : `'${String(pkVal).replace(/'/g, "''")}'`;
+
+  // Cascade plan
+  let cascadeMsg = '';
+  let statements = [];
+  if (tname === 'videos') {
+    cascadeMsg = 'asr_sentences · corpus_paragraphs · course_topics';
+    statements = [
+      `DELETE FROM asr_sentences WHERE video_id = ${pkStr}`,
+      `DELETE FROM corpus_paragraphs WHERE video_id = ${pkStr}`,
+      `DELETE FROM course_topics WHERE video_id = ${pkStr}`,
+      `DELETE FROM videos WHERE id = ${pkStr}`,
+    ];
+  } else if (tname === 'corpus_paragraphs') {
+    cascadeMsg = 'asr_sentences';
+    statements = [
+      `DELETE FROM asr_sentences WHERE paragraph_id = ${pkStr}`,
+      `DELETE FROM corpus_paragraphs WHERE id = ${pkStr}`,
+    ];
+  } else {
+    statements = [`DELETE FROM "${tname}" WHERE "${pk}" = ${pkStr}`];
+  }
+
+  let msg = t('delete_confirm', {tname: tname, pk: pk, val: pkVal});
+  if (cascadeMsg) msg += t('cascade_warn', {tables: cascadeMsg});
+  if (!confirm(msg)) return;
+
+  try {
+    for (const stmt of statements) {
+      const resp = await fetch('/api/outline/db-table/_sql', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sql: stmt })
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.detail || `HTTP ${resp.status}`);
+      }
+      // Also update sql.js
+      if (db) { try { db.exec(stmt); } catch(e) {} }
+    }
+    // Remove row from DOM
+    const tr = btn.closest('tr');
+    tr.style.background = '#fef2f2';
+    tr.style.transition = 'opacity .3s';
+    tr.style.opacity = '0';
+    setTimeout(() => tr.remove(), 300);
+
+    // Update header row count. Derive the suffix from the localized rows_label
+    // template ({n} is first in every language) so deletion updates the count
+    // in any language -- en is "{n} rows", not "{n} 行".
+    const header = document.getElementById('content-header');
+    const suffix = t('rows_label', {n: ''});
+    const rowsRe = new RegExp('(\\d+)' + suffix);
+    const countMatch = header.innerHTML.match(rowsRe);
+    if (countMatch) {
+      const newCount = Math.max(0, parseInt(countMatch[1]) - 1);
+      header.innerHTML = header.innerHTML.replace(rowsRe, t('rows_label', {n: newCount}));
+    }
+    renderRowCounts();
+  } catch (e) {
+    btn.style.color = '#ef4444';
+    btn.title = e.message;
+    setTimeout(() => { btn.style.color = ''; }, 2000);
+  }
+}
+
+// ═══ SQL Runner (CRUD via API for writes, sql.js for reads) ═══
+let dbSource = null; // 'api' | 'file' — tracks how the DB was loaded
+
+function isWriteSQL(sql) {
+  const first = sql.trim().split(/\s+/)[0].toUpperCase();
+  return ['INSERT', 'UPDATE', 'DELETE', 'CREATE', 'ALTER', 'DROP', 'REPLACE'].includes(first);
+}
+
+async function runSQL() {
+  if (!db && !dbSource) {
+    document.getElementById('sql-result').innerHTML = '<div class="sql-error">' + t('load_db_first') + '</div>';
+    return;
+  }
+  const sql = document.getElementById('sql-input').value.trim();
+  if (!sql) return;
+  const container = document.getElementById('sql-result');
+
+  // ── Write queries → backend API (persists to disk) ──
+  if (isWriteSQL(sql)) {
+    if (dbSource !== 'api') {
+      container.innerHTML = '<div class="sql-error">' + t('sql_write_only') + '</div>';
+      return;
+    }
+    container.innerHTML = '<div style="font-size:11px;color:#94a3b8;padding:4px 0;">' + t('executing') + '</div>';
+    try {
+      const resp = await fetch('/api/outline/db-table/_sql', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sql })
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.detail || `HTTP ${resp.status}`);
+      }
+      const data = await resp.json();
+      if (data.type === 'write') {
+        container.innerHTML = `<div style="font-size:11px;color:#16a34a;padding:4px 0;">${t('exec_ok', {n: data.affected})} &nbsp;<button onclick="refreshDB()" style="font-size:10px;padding:2px 8px;border:1px solid #86efac;border-radius:4px;background:#f0fdf4;color:#166534;cursor:pointer;">${t('refresh_db')}</button></div>`;
+        document.getElementById('refresh-btn').style.display = 'inline-block';
+      } else {
+        container.innerHTML = '<div style="font-size:11px;color:#94a3b8;padding:4px 0;">' + t('exec_ok_simple') + '</div>';
+      }
+    } catch (e) {
+      container.innerHTML = `<div class="sql-error">${escapeHtml(e.message)}</div>`;
+    }
+    return;
+  }
+
+  // ── Read queries → sql.js (instant, works offline) ──
+  if (!db) {
+    container.innerHTML = '<div class="sql-error">' + t('load_db_first') + '</div>';
+    return;
+  }
+  try {
+    const result = db.exec(sql);
+    if (result.length === 0) {
+      container.innerHTML = '<div style="font-size:11px;color:#94a3b8;padding:4px 0;">' + t('query_ok') + '</div>';
+      return;
+    }
+    let html = '';
+    for (const r of result) {
+      const cols = r.columns;
+      const rows = r.values;
+      html += `<div style="font-size:10px;color:#94a3b8;padding:4px 0;">${t('rows_label', {n: rows.length})} · ${cols.join(', ')}</div>`;
+      html += '<table class="data-table" style="margin-bottom:8px;"><thead><tr>';
+      html += '<th>#</th>';
+      for (const col of cols) html += `<th>${col}</th>`;
+      html += '</tr></thead><tbody>';
+      for (let i = 0; i < rows.length; i++) {
+        html += '<tr>';
+        html += `<td class="num" style="color:#94a3b8">${i + 1}</td>`;
+        for (let j = 0; j < rows[i].length; j++) {
+          const v = rows[i][j];
+          if (v === null) { html += '<td class="null">NULL</td>'; }
+          else if (typeof v === 'number') { html += `<td class="num">${v}</td>`; }
+          else { html += `<td>${escapeHtml(String(v).length > 100 ? String(v).slice(0,100)+'…' : String(v))}</td>`; }
+        }
+        html += '</tr>';
+      }
+      html += '</tbody></table>';
+    }
+    container.innerHTML = html;
+  } catch (e) {
+    container.innerHTML = `<div class="sql-error">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function escapeHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+async function refreshDB() {
+  if (dbSource === 'api') {
+    await loadDefault();
+    document.getElementById('sql-result').innerHTML = '<div style="font-size:11px;color:#16a34a;padding:4px 0;">' + t('db_refreshed') + '</div>';
+  } else if (dbSource === 'file') {
+    document.getElementById('sql-result').innerHTML = '<div class="sql-error">' + t('local_no_refresh') + '</div>';
+  }
+}
+
+// Enter in SQL box = run
+document.getElementById('sql-input').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter' && e.ctrlKey) { e.preventDefault(); runSQL(); }
+});
+
+// ═══ Auto-connect on page load ═══
+// 打开 DB Viewer 即自动连接 corpus.db（动态发现全部表 + 行数）。
+// loadDefault() 仍可由「📌 加载默认路径」按钮手动重新触发。
+function initAutoLoad() { loadDefault(); }
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initAutoLoad);
+} else {
+  initAutoLoad();
+}
+</script>
+</body>
+</html>

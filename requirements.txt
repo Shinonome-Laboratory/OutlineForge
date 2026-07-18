@@ -1,0 +1,17 @@
+# 02-outline (Function B) — Python dependencies
+# Standard-library modules are not listed.
+
+# Web framework + ASGI server
+fastapi
+uvicorn
+
+# HTTP client (Ollama calls)
+httpx
+
+# Multipart form parsing (FastAPI file uploads)
+python-multipart
+
+# File-upload text extraction (lesson-gen extract-file)
+pypdf
+python-pptx
+python-docx
