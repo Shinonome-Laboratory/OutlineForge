@@ -10,3 +10,11 @@ __pycache__/
 HANDOFF*.md
 中文初稿*.md
 页面布局和UI风格参考.html
+CLAUDE.md
+CONTEXT.md
+PRD.md
+PPT.md
+docs/
+02-outline-功能概述.md
+02-outline-devnote.md
+UI设计规范.md
