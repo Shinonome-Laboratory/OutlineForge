@@ -51,6 +51,32 @@ def _header(title_zh: str, title_ja: str, title_en: str):
 # 内联 Stop 逻辑
 # =============================================================================
 
+def _python_cmdlines() -> dict:
+    """Return {pid: lower-cased command line} for all python.exe processes.
+
+    wmic 在 Win11 24H2+ 已被移除（调用会静默失效），改用 PowerShell 的
+    Get-CimInstance 一次性取回全部命令行。
+    """
+    try:
+        result = subprocess.run(
+            ["powershell", "-NoProfile", "-Command",
+             "Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" | "
+             "ForEach-Object { \"$($_.ProcessId)`t$($_.CommandLine)\" }"],
+            capture_output=True, text=True, timeout=15, errors="replace",
+        )
+        out = {}
+        for line in (result.stdout or "").splitlines():
+            parts = line.split("\t", 1)
+            if len(parts) == 2:
+                try:
+                    out[int(parts[0].strip())] = (parts[1] or "").lower()
+                except ValueError:
+                    continue
+        return out
+    except Exception:
+        return {}
+
+
 def stop_old_service():
     """终止可能正在运行的旧服务进程。"""
     killed_any = False
@@ -81,39 +107,19 @@ def stop_old_service():
                 f"   ⚠️  Failed to read PID file: {e}",
             ))
 
-    # 方案 2：tasklist + wmic
-    try:
-        result = subprocess.run(
-            ["tasklist", "/FI", "IMAGENAME eq python.exe", "/FO", "CSV", "/NH"],
-            capture_output=True, text=True, timeout=10,
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            for line in result.stdout.strip().split("\n"):
-                parts = line.replace('"', "").split(",")
-                if len(parts) >= 2:
-                    try:
-                        pid = int(parts[1].strip())
-                    except ValueError:
-                        continue
-                    try:
-                        cmd_result = subprocess.run(
-                            ["wmic", "process", "where", f"ProcessId={pid}",
-                             "get", "CommandLine"],
-                            capture_output=True, text=True, timeout=5,
-                        )
-                        cmdline = cmd_result.stdout.lower()
-                        if ("uvicorn" in cmdline or MAIN_MODULE in cmdline) and pid != os.getpid():
-                            os.kill(pid, signal.SIGTERM)
-                            print(T(
-                                f"   ✅ 已终止 uvicorn 进程 PID {pid}",
-                                f"   ✅ uvicorn プロセス PID {pid} を終了しました",
-                                f"   ✅ Killed uvicorn process PID {pid}",
-                            ))
-                            killed_any = True
-                    except Exception:
-                        pass
-    except Exception:
-        pass
+    # 方案 2：按进程命令行匹配（经 Get-CimInstance，见 _python_cmdlines）
+    for pid, cmdline in _python_cmdlines().items():
+        if ("uvicorn" in cmdline or MAIN_MODULE in cmdline) and pid != os.getpid():
+            try:
+                os.kill(pid, signal.SIGTERM)
+                print(T(
+                    f"   ✅ 已终止 uvicorn 进程 PID {pid}",
+                    f"   ✅ uvicorn プロセス PID {pid} を終了しました",
+                    f"   ✅ Killed uvicorn process PID {pid}",
+                ))
+                killed_any = True
+            except Exception:
+                pass
 
     # 方案 3：netstat
     try:

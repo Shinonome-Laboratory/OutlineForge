@@ -106,6 +106,22 @@
       .video-item:hover { background: #f8fafc; }
       .video-item.active { background: #eef2ff; border-left-color: #6366f1; }
 
+      /* Video-list course groups (教师 · 课程, collapsible) — 与 01 corpus.html 同款 */
+      .wb-group-header {
+        display: flex; align-items: center; gap: 6px;
+        padding: 5px 10px; margin-top: 2px;
+        font-size: 10px; font-weight: 600; color: #64748b;
+        cursor: pointer; user-select: none;
+        background: #f8fafc;
+        border-top: 1px solid #f1f5f9; border-bottom: 1px solid #f1f5f9;
+        position: sticky; top: 0; z-index: 5;
+        transition: background 0.12s ease, color 0.12s ease;
+      }
+      .wb-group-header:hover { background: #f1f5f9; color: #334155; }
+      .wb-group-header .chev { width: 10px; font-size: 9px; color: #94a3b8; flex-shrink: 0; }
+      .wb-group-header.unassigned { color: #b45309; background: #fffbeb; border-color: #fef3c7; }
+      .wb-group-header.unassigned:hover { background: #fef3c7; }
+
       /* Nav tabs */
       .nav-tab {
         transition: all 0.15s ease;
@@ -142,6 +158,7 @@
         <div class="nav-tab active h-full" data-page="workbench" data-i18n="tab_workbench">工作台</div>
         <div class="nav-tab h-full" data-page="ckg" data-i18n="tab_ckg">知识图谱</div>
         <div class="nav-tab h-full" data-page="profile" data-i18n="tab_profile">风格画像卡</div>
+        <div class="nav-tab h-full" data-page="teachers" data-i18n="tab_teachers">教师档案</div>
         <div class="nav-tab h-full" data-page="lessongen" data-i18n="tab_lessongen">教案生成</div>
         <div class="nav-tab h-full" data-page="dbviewer" data-i18n="tab_dbviewer">DB Viewer</div>
       </div>
@@ -528,6 +545,11 @@
     <!-- 空白页壳：风格画像卡（雷达图等后续任务填充）     -->
     <!-- ═══════════════════════════════════════════════ -->
     <div id="page-profile" class="flex-1 flex flex-col overflow-y-auto bg-surface-50" style="display:none;">
+      <!-- 画像范围：全库 / 按教师（P3 作用域化；教师数据由 01 维护，02 只读） -->
+      <div id="profile-scope-bar" class="max-w-4xl w-full mx-auto px-6 pt-4 flex items-center gap-2" style="display:none;">
+        <span class="text-[10px] text-surface-400" data-i18n="profile.scope_label">画像范围</span>
+        <select id="profile-teacher-select" class="text-[11px] border border-surface-200 rounded-md px-2 py-0.5 bg-white"></select>
+      </div>
       <!-- Empty state (lecture_count === 0) -->
       <div id="profile-empty" class="flex-1 flex flex-col items-center justify-center text-center text-surface-300 select-none" style="display:none;">
         <div class="text-5xl mb-4">🎴</div>
@@ -581,6 +603,33 @@
           <p id="profile-rules" class="text-[12px] text-surface-600 leading-relaxed bg-surface-50 rounded-lg p-3"></p>
         </div>
       </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════ -->
+    <!-- PAGE: TEACHERS (hidden by default)               -->
+    <!-- 教师档案：只读视图 + 02 特有的 CK 维度画像；      -->
+    <!-- 教师/课程的编辑入口在 01（仅放跳转链接）。        -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <div id="page-teachers" class="flex-1 flex overflow-hidden bg-surface-50 px-5 py-3 gap-3" style="display:none;">
+      <!-- Left: teacher list -->
+      <aside class="w-56 shrink-0 flex flex-col bg-white rounded-xl border border-surface-100 overflow-hidden">
+        <div class="px-3 py-2 border-b border-surface-100 flex items-center justify-between">
+          <span class="text-[10px] font-semibold text-surface-500 uppercase tracking-wider" data-i18n="teacher.list_title">教师列表</span>
+          <span id="teacher-count" class="text-[9px] text-surface-300 tabular-nums"></span>
+        </div>
+        <div id="teacher-list" class="flex-1 overflow-y-auto py-1"></div>
+        <a href="http://localhost:8000" target="_blank"
+           class="block px-3 py-2 border-t border-surface-100 text-[10px] text-accent-500 hover:text-accent-600 hover:bg-surface-50 transition-colors"
+           data-i18n="teacher.edit_in_01">编辑教师 / 课程 → 前往 01 语料库</a>
+      </aside>
+      <!-- Right: CK profile of the selected teacher -->
+      <section class="flex-1 min-w-0 overflow-y-auto">
+        <div id="teacher-detail-empty" class="h-full flex flex-col items-center justify-center text-center text-surface-300 select-none">
+          <div class="text-5xl mb-4">🧑‍🏫</div>
+          <p class="text-sm font-medium text-surface-400" data-i18n="teacher.select_hint">选择左侧教师查看 CK 档案</p>
+        </div>
+        <div id="teacher-detail" class="max-w-4xl mx-auto" style="display:none;"></div>
+      </section>
     </div>
 
     <!-- ═══════════════════════════════════════════════ -->
@@ -920,6 +969,25 @@
             'video.label': '选择视频',
             'video.placeholder': '请选择视频…',
             'no_videos': '暂无视频',
+            'course_unassigned': '未分类',
+            'tab_teachers': '教师档案',
+            'teacher.list_title': '教师列表',
+            'teacher.select_hint': '选择左侧教师查看 CK 档案',
+            'teacher.no_teachers': '暂无教师 — 请在 01 语料库录入',
+            'teacher.edit_in_01': '编辑教师 / 课程 → 前往 01 语料库',
+            'teacher.courses_title': '课程与 CK 统计',
+            'teacher.ckg_means_title': 'CK 指标均值（已抽取 {n} 节课）',
+            'teacher.no_ckg': '暂无知识图谱数据 — 请先在知识图谱页抽取',
+            'teacher.video_unit': '视频',
+            'teacher.topic_unit': '话题',
+            'teacher.para_unit': '段落',
+            'teacher.course_unit': '门课程',
+            'teacher.semester': '学期',
+            'teacher.title_label': '职称',
+            'teacher.affiliation': '所属',
+            'teacher.avg_depth': '平均拆解深度',
+            'profile.scope_label': '画像范围',
+            'profile.scope_all': '全库（全部课）',
             'unnamed_video': '未命名视频',
             'upload_btn': '+ 上传视频',
             'video.not_installed': ' (未安装)',
@@ -1200,6 +1268,25 @@
             'video.label': 'Select Video',
             'video.placeholder': 'Select a video…',
             'no_videos': 'No videos',
+            'course_unassigned': 'Unassigned',
+            'tab_teachers': 'Teachers',
+            'teacher.list_title': 'Teachers',
+            'teacher.select_hint': 'Select a teacher to view the CK profile',
+            'teacher.no_teachers': 'No teachers — add them in the 01 corpus module',
+            'teacher.edit_in_01': 'Edit teachers / courses → open 01 corpus',
+            'teacher.courses_title': 'Courses & CK stats',
+            'teacher.ckg_means_title': 'CK metric means ({n} lectures extracted)',
+            'teacher.no_ckg': 'No CKG data yet — extract on the CKG page first',
+            'teacher.video_unit': 'videos',
+            'teacher.topic_unit': 'topics',
+            'teacher.para_unit': 'paragraphs',
+            'teacher.course_unit': 'courses',
+            'teacher.semester': 'Semester',
+            'teacher.title_label': 'Title',
+            'teacher.affiliation': 'Affiliation',
+            'teacher.avg_depth': 'Avg depth',
+            'profile.scope_label': 'Scope',
+            'profile.scope_all': 'Whole corpus',
             'unnamed_video': 'Unnamed',
             'upload_btn': '+ Upload',
             'video.not_installed': ' (not installed)',
@@ -1479,6 +1566,25 @@
             'video.label': '動画を選択',
             'video.placeholder': '動画を選択してください…',
             'no_videos': '動画なし',
+            'course_unassigned': '未分類',
+            'tab_teachers': '教師プロフィール',
+            'teacher.list_title': '教師一覧',
+            'teacher.select_hint': '左の教師を選択して CK プロフィールを表示',
+            'teacher.no_teachers': '教師がいません — 01 コーパスで登録してください',
+            'teacher.edit_in_01': '教師 / コースの編集 → 01 コーパスへ',
+            'teacher.courses_title': 'コースと CK 統計',
+            'teacher.ckg_means_title': 'CK 指標平均（抽出済み {n} 講義）',
+            'teacher.no_ckg': 'CKG データなし — 先に知識グラフページで抽出してください',
+            'teacher.video_unit': '動画',
+            'teacher.topic_unit': 'トピック',
+            'teacher.para_unit': '段落',
+            'teacher.course_unit': 'コース',
+            'teacher.semester': '学期',
+            'teacher.title_label': '職位',
+            'teacher.affiliation': '所属',
+            'teacher.avg_depth': '平均分解深度',
+            'profile.scope_label': '対象範囲',
+            'profile.scope_all': '全体（全講義）',
             'unnamed_video': '無名',
             'upload_btn': '+ アップロード',
             'video.not_installed': ' (未インストール)',
@@ -1753,6 +1859,161 @@
         }
     });
 
+    // ══════════════════════════════════════════════════════
+    // 教师档案 (Teachers, P2) — 只读视图 + 02 特有的 CK 维度画像。
+    // teachers / courses 由 01 独家维护；编辑走左栏底部跳转链接。
+    // ══════════════════════════════════════════════════════
+    var _selectedTeacherId = null;
+
+    function _escHtml(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, function (ch) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
+        });
+    }
+
+    function _fmtMetric(v, digits) {
+        return (v === null || v === undefined) ? '—' : Number(v).toFixed(digits === undefined ? 2 : digits);
+    }
+
+    async function loadTeachersPage() {
+        var listEl = document.getElementById('teacher-list');
+        var countEl = document.getElementById('teacher-count');
+        if (!listEl) return;
+        var teachers = [];
+        try {
+            var resp = await fetch('/api/outline/teachers');
+            if (resp.ok) teachers = await resp.json();
+        } catch (e) { console.error('loadTeachersPage error:', e); }
+        if (countEl) countEl.textContent = teachers.length;
+
+        listEl.innerHTML = '';
+        if (!teachers.length) {
+            listEl.innerHTML = '<div class="px-3 py-6 text-center text-[10px] text-surface-300">' + t('teacher.no_teachers') + '</div>';
+            renderTeacherDetail(null);
+            return;
+        }
+        teachers.forEach(function (te) {
+            var item = document.createElement('div');
+            item.className = 'video-item';
+            item.setAttribute('data-teacher', te.id);
+            var sub = te.course_count + ' ' + t('teacher.course_unit') + ' · '
+                    + te.video_count + ' ' + t('teacher.video_unit');
+            item.innerHTML =
+                '<div class="text-[11px] font-medium text-surface-800 truncate leading-tight">' + _escHtml(te.name) + '</div>' +
+                '<div class="text-[9px] text-surface-400 mt-0.5">' + sub + '</div>';
+            item.addEventListener('click', function () {
+                document.querySelectorAll('#teacher-list [data-teacher]').forEach(function (el) { el.classList.remove('active'); });
+                item.classList.add('active');
+                _selectedTeacherId = te.id;
+                renderTeacherDetail(te.id);
+            });
+            listEl.appendChild(item);
+        });
+
+        // 保持上次选中；否则自动选第一位
+        var keep = teachers.some(function (te) { return te.id === _selectedTeacherId; });
+        var toSelect = keep ? _selectedTeacherId : teachers[0].id;
+        var el = listEl.querySelector('[data-teacher="' + toSelect + '"]');
+        if (el) el.click();
+    }
+
+    async function renderTeacherDetail(teacherId) {
+        var emptyEl = document.getElementById('teacher-detail-empty');
+        var detailEl = document.getElementById('teacher-detail');
+        if (!detailEl) return;
+        if (teacherId == null) {
+            if (emptyEl) emptyEl.style.display = '';
+            detailEl.style.display = 'none';
+            return;
+        }
+        var data = null;
+        try {
+            var resp = await fetch('/api/outline/teachers/' + encodeURIComponent(teacherId) + '/ck-profile');
+            if (resp.ok) data = await resp.json();
+        } catch (e) { console.error('renderTeacherDetail error:', e); }
+        if (!data) return;
+        if (emptyEl) emptyEl.style.display = 'none';
+        detailEl.style.display = '';
+
+        var tch = data.teacher;
+        var means = data.ckg_means || {};
+
+        // ---- 基本信息（只读；01 维护）----
+        var metaBits = [];
+        if (tch.title) metaBits.push(_escHtml(tch.title));
+        if (tch.affiliation) metaBits.push(_escHtml(tch.affiliation));
+        var html =
+            '<div class="bg-white rounded-xl border border-surface-100 p-4 mb-4">' +
+              '<div class="flex items-baseline gap-2 flex-wrap">' +
+                '<h2 class="text-lg font-semibold text-surface-700">' + _escHtml(tch.name) + '</h2>' +
+                (metaBits.length ? '<span class="text-[11px] text-surface-400">' + metaBits.join(' · ') + '</span>' : '') +
+              '</div>' +
+              '<div class="flex gap-4 mt-2 text-[11px] text-surface-500 tabular-nums">' +
+                '<span>' + tch.course_count + ' ' + t('teacher.course_unit') + '</span>' +
+                '<span>' + tch.video_count + ' ' + t('teacher.video_unit') + '</span>' +
+                '<span>' + tch.para_count + ' ' + t('teacher.para_unit') + '</span>' +
+                '<span>' + formatTime(tch.total_duration || 0) + '</span>' +
+              '</div>' +
+            '</div>';
+
+        // ---- CK 指标均值（该教师全部已抽取课；RETIRED 列不展示）----
+        html += '<div class="bg-white rounded-xl border border-surface-100 p-4 mb-4">' +
+            '<div class="text-[10px] font-semibold text-surface-500 uppercase tracking-wider mb-2">' +
+            t('teacher.ckg_means_title', { n: means.n_videos || 0 }) + '</div>';
+        if (!means.n_videos) {
+            html += '<div class="text-[11px] text-surface-300">' + t('teacher.no_ckg') + '</div>';
+        } else {
+            html += '<div class="grid grid-cols-5 gap-2 text-center">';
+            [
+                ['ckg.param.depth', means.depth, 1],
+                ['ckg.param.branch', means.branch_factor, 2],
+                ['ckg.param.convergence', means.convergence_count, 1],
+                ['ckg.param.relation_density', means.relation_density, 2],
+                ['ckg.param.bottomup', means.bottomup_ratio, 2]
+            ].forEach(function (m) {
+                html += '<div class="bg-surface-50 rounded-lg py-2">' +
+                    '<div class="text-[13px] font-semibold text-surface-700 tabular-nums">' + _fmtMetric(m[1], m[2]) + '</div>' +
+                    '<div class="text-[9px] text-surface-400 mt-0.5">' + t(m[0]) + '</div></div>';
+            });
+            html += '</div>';
+        }
+        html += '</div>';
+
+        // ---- 课程与 CK 统计（teacher_course；≠ 02 的 course_topics）----
+        html += '<div class="bg-white rounded-xl border border-surface-100 p-4 mb-4">' +
+            '<div class="text-[10px] font-semibold text-surface-500 uppercase tracking-wider mb-2">' +
+            t('teacher.courses_title') + '</div>';
+        if (!data.courses || !data.courses.length) {
+            html += '<div class="text-[11px] text-surface-300">—</div>';
+        } else {
+            data.courses.forEach(function (c) {
+                html += '<div class="border border-surface-100 rounded-lg p-3 mb-2">' +
+                    '<div class="flex items-baseline justify-between gap-2 flex-wrap">' +
+                      '<div class="text-[12px] font-medium text-surface-700">' + _escHtml(c.name) +
+                        (c.semester ? ' <span class="text-[10px] text-surface-400">' + _escHtml(c.semester) + '</span>' : '') +
+                      '</div>' +
+                      '<div class="text-[10px] text-surface-400 tabular-nums">' +
+                        c.video_count + ' ' + t('teacher.video_unit') +
+                        ' · ' + c.topic_count + ' ' + t('teacher.topic_unit') +
+                        ' · CKG ' + c.extracted_count + '/' + c.video_count +
+                      '</div>' +
+                    '</div>' +
+                    (c.extracted_count
+                        ? '<div class="flex gap-3 mt-1.5 text-[10px] text-surface-500 flex-wrap tabular-nums">' +
+                            '<span>' + t('ckg.param.depth') + ' ' + _fmtMetric(c.avg_depth, 1) + '</span>' +
+                            '<span>' + t('ckg.param.branch') + ' ' + _fmtMetric(c.avg_branch_factor, 2) + '</span>' +
+                            '<span>' + t('ckg.param.convergence') + ' ' + _fmtMetric(c.avg_convergence_count, 1) + '</span>' +
+                            '<span>' + t('ckg.param.relation_density') + ' ' + _fmtMetric(c.avg_relation_density, 2) + '</span>' +
+                            '<span>' + t('ckg.param.bottomup') + ' ' + _fmtMetric(c.avg_bottomup_ratio, 2) + '</span>' +
+                          '</div>'
+                        : '') +
+                    '</div>';
+            });
+        }
+        html += '</div>';
+        detailEl.innerHTML = html;
+    }
+
     // ═══ NAVIGATION: Tab switching ════════════════════════
     document.querySelectorAll('.nav-tab').forEach(function(tab) {
       tab.addEventListener('click', function() {
@@ -1764,6 +2025,7 @@
         document.getElementById('page-workbench').style.display = page === 'workbench' ? '' : 'none';
         document.getElementById('page-ckg').style.display      = page === 'ckg'       ? '' : 'none';
         document.getElementById('page-profile').style.display   = page === 'profile'   ? '' : 'none';
+        document.getElementById('page-teachers').style.display  = page === 'teachers'  ? '' : 'none';
         document.getElementById('page-lessongen').style.display = page === 'lessongen' ? '' : 'none';
         document.getElementById('page-dbviewer').style.display = page === 'dbviewer' ? '' : 'none';
         // On first CKG page open: load video list
@@ -1777,6 +2039,10 @@
         // On profile page open: load the aggregate style card.
         if (page === 'profile' && typeof renderProfile === 'function') {
             renderProfile();
+        }
+        // On teachers page open: load teacher list (read-only view).
+        if (page === 'teachers' && typeof loadTeachersPage === 'function') {
+            loadTeachersPage();
         }
         // On lesson-gen page open: bind controls once; resize any existing DAG
         // (the container was display:none until now → may have rendered 0x0).
@@ -2090,6 +2356,120 @@
 
     var workbenchSelectedVideoId = null;
 
+    // ------------------------------------------------------------------
+    // 共用：按 教师·课程 分组渲染（工作台与知识图谱页两份列表共用此实现）。
+    // 组 key：'c'+course_id / 'unassigned'；折叠状态持久化到
+    // localStorage('ob_open_groups')，两个列表共享同一份展开状态。
+    // 交互模式与 01 corpus.html 的 renderWorkbenchVideoList 一致。
+    // ------------------------------------------------------------------
+
+    function _loadOpenGroups() {
+        try {
+            var raw = localStorage.getItem('ob_open_groups');
+            return raw ? new Set(JSON.parse(raw)) : null;
+        } catch (e) { return null; }
+    }
+    var videoOpenGroups = _loadOpenGroups();   // null = 首次访问，渲染时定默认
+
+    function _saveOpenGroups() {
+        localStorage.setItem('ob_open_groups', JSON.stringify(Array.from(videoOpenGroups)));
+    }
+
+    function videoGroupKey(v) {
+        return v.course_id != null ? 'c' + v.course_id : 'unassigned';
+    }
+
+    function renderGroupedVideoList(listEl, videos, renderItem, selectedId, rerender) {
+        listEl.innerHTML = '';
+        if (!videos || !videos.length) {
+            listEl.innerHTML = '<div class="px-3 py-6 text-center text-[10px] text-surface-300">' + t('no_videos') + '</div>';
+            return;
+        }
+
+        // 按课程聚组；组内保持 API 的排序
+        var groupMap = new Map();
+        videos.forEach(function (v) {
+            var key = videoGroupKey(v);
+            if (!groupMap.has(key)) {
+                groupMap.set(key, {
+                    key: key,
+                    label: v.course_id != null
+                        ? (v.teacher_name ? v.teacher_name + ' · ' : '') + v.course_name
+                        : t('course_unassigned'),
+                    unassigned: v.course_id == null,
+                    videos: []
+                });
+            }
+            groupMap.get(key).videos.push(v);
+        });
+        var groups = Array.from(groupMap.values()).sort(function (a, b) {
+            if (a.unassigned !== b.unassigned) return a.unassigned ? 1 : -1;
+            return a.label.localeCompare(b.label, 'zh');
+        });
+
+        // 首次（无持久化状态）：只展开选中视频所在组，否则第一组
+        if (videoOpenGroups == null) {
+            videoOpenGroups = new Set();
+            var openKey = null;
+            if (selectedId != null) {
+                var sel = videos.find(function (v) { return v.id === selectedId; });
+                if (sel) openKey = videoGroupKey(sel);
+            }
+            videoOpenGroups.add(openKey || groups[0].key);
+            _saveOpenGroups();
+        }
+
+        groups.forEach(function (g) {
+            var open = videoOpenGroups.has(g.key);
+
+            var header = document.createElement('div');
+            header.className = 'wb-group-header' + (g.unassigned ? ' unassigned' : '');
+            header.setAttribute('data-group', g.key);
+
+            var chev = document.createElement('span');
+            chev.className = 'chev';
+            chev.textContent = open ? '▾' : '▸';
+
+            var label = document.createElement('span');
+            label.className = 'flex-1 min-w-0 truncate';
+            label.textContent = g.label;
+            label.title = g.label;
+
+            header.appendChild(chev);
+            header.appendChild(label);
+
+            var count = document.createElement('span');
+            count.className = 'text-[9px] text-surface-300 tabular-nums shrink-0';
+            count.textContent = g.videos.length;
+            header.appendChild(count);
+
+            header.addEventListener('click', function () {
+                if (videoOpenGroups.has(g.key)) videoOpenGroups.delete(g.key);
+                else videoOpenGroups.add(g.key);
+                _saveOpenGroups();
+                rerender();
+            });
+            listEl.appendChild(header);
+
+            if (open) {
+                g.videos.forEach(function (v) { listEl.appendChild(renderItem(v)); });
+            }
+        });
+
+        // 恢复选中高亮（所在组折叠时项不在 DOM，选择本身不受影响）
+        if (selectedId != null) {
+            var selItem = listEl.querySelector('[data-video="' + selectedId + '"], [data-ckg-video="' + selectedId + '"]');
+            if (selItem) selItem.classList.add('active');
+        }
+    }
+
+    function renderWorkbenchVideoList() {
+        var listEl = document.getElementById('video-list');
+        if (!listEl) return;
+        renderGroupedVideoList(listEl, videoListCache, renderVideoListItem,
+            workbenchSelectedVideoId, renderWorkbenchVideoList);
+    }
+
     async function loadVideos() {
         var listEl = document.getElementById('video-list');
         var countEl = document.getElementById('workbench-video-count');
@@ -2102,20 +2482,9 @@
             videoListCache = videos;
             if (countEl) countEl.textContent = videos.length;
 
-            listEl.innerHTML = '';
-            if (!videos.length) {
-                listEl.innerHTML = '<div class="px-3 py-6 text-center text-[10px] text-surface-300">' + t('no_videos') + '</div>';
-                return;
-            }
-            for (var i = 0; i < videos.length; i++) {
-                listEl.appendChild(renderVideoListItem(videos[i]));
-            }
-            if (workbenchSelectedVideoId) {
-                // Restore active highlight without re-triggering onVideoSelect
-                var sel = listEl.querySelector('[data-video="' + workbenchSelectedVideoId + '"]');
-                if (sel) sel.classList.add('active');
-            } else if (videos.length > 0) {
-                // Auto-select first video on initial load
+            renderWorkbenchVideoList();
+            if (!workbenchSelectedVideoId && videos.length > 0) {
+                // Auto-select the first VISIBLE video (first item of first open group)
                 var first = listEl.querySelector('.video-item');
                 if (first) first.click();
             }
@@ -2154,16 +2523,8 @@
 
     function refreshVideoDropdownI18n() {
         // Rebuild video list with current language
-        var listEl = document.getElementById('video-list');
-        if (!listEl || !videoListCache.length) return;
-        listEl.innerHTML = '';
-        for (var i = 0; i < videoListCache.length; i++) {
-            listEl.appendChild(renderVideoListItem(videoListCache[i]));
-        }
-        if (workbenchSelectedVideoId) {
-            var sel = listEl.querySelector('[data-video="' + workbenchSelectedVideoId + '"]');
-            if (sel) sel.classList.add('active');
-        }
+        if (!videoListCache.length) return;
+        renderWorkbenchVideoList();
     }
 
     // ------------------------------------------------------------------
@@ -3191,11 +3552,49 @@
         if (modelSel) modelSel.addEventListener('change', saveCKGModel);
     }
 
+    var ckgVideoListCache = [];   // cached list for re-render (folding / i18n)
+    var ckgAnalyzedMap = {};      // video_id -> concept_count
+
+    function renderCkgVideoItem(v) {
+        var item = document.createElement('div');
+        item.className = 'video-item flex items-center gap-2';
+        item.dataset.ckgVideo = v.id;
+
+        // Green dot = concept analysis done (has course_ckg data);
+        // red dot ('none') = no analysis data yet.
+        var isAnalyzed = Object.prototype.hasOwnProperty.call(ckgAnalyzedMap, v.id);
+        var dotClass = isAnalyzed ? 'done' : 'none';
+        var subtitle = isAnalyzed
+            ? (ckgAnalyzedMap[v.id] + ' ' + t('ckg.concept_count_label') + ' · ' + (v.topic_count || 0) + ' ' + t('topic.label') + ' · ' + formatTime(v.duration || 0))
+            : (t('ckg.not_analyzed') + ' · ' + (v.topic_count || 0) + ' ' + t('topic.label') + ' · ' + formatTime(v.duration || 0));
+        item.innerHTML =
+            '<div class="status-dot ' + dotClass + '"></div>' +
+            '<div class="flex-1 min-w-0">' +
+            '<p class="truncate font-medium text-surface-700 text-[10px]">' + (v.name || t('unnamed_video')) + '</p>' +
+            '<p class="text-surface-400 text-[9px]">' + subtitle + '</p>' +
+            '</div>';
+
+        item.addEventListener('click', function () {
+            document.querySelectorAll('#ckg-video-list [data-ckg-video]').forEach(function (el) { el.classList.remove('active'); });
+            item.classList.add('active');
+            ckgSelectedVideoId = v.id;
+            onCKGVideoSelect(v.id);
+        });
+        return item;
+    }
+
+    function renderCkgVideoList() {
+        var listEl = document.getElementById('ckg-video-list');
+        if (!listEl) return;
+        renderGroupedVideoList(listEl, ckgVideoListCache, renderCkgVideoItem,
+            ckgSelectedVideoId, renderCkgVideoList);
+    }
+
     async function loadCKGVideos() {
         var listEl = document.getElementById('ckg-video-list');
         if (!listEl) return;
         try {
-            // Fetch the video list and the corpus CKG endpoint in parallel.
+            // Fetch the video list and the corpus CKG endpoint in sequence.
             // The latter tells us which videos have been concept-analyzed and
             // how many concepts each one has.
             var resp = await fetch('/api/outline/videos');
@@ -3213,38 +3612,9 @@
                 }
             } catch (_) { /* corpus fetch optional; degrade to "not analyzed" */ }
 
-            listEl.innerHTML = '';
-            if (!videos || videos.length === 0) {
-                listEl.innerHTML = '<p class="text-[10px] text-surface-300 px-3 py-2" data-i18n="no_videos">' + t('no_videos') + '</p>';
-                return;
-            }
-            videos.forEach(function (v) {
-                var item = document.createElement('div');
-                item.className = 'video-item flex items-center gap-2';
-                item.dataset.ckgVideo = v.id;
-
-                // Green dot = concept analysis done (has course_ckg data);
-                // red dot ('none') = no analysis data yet.
-                var isAnalyzed = Object.prototype.hasOwnProperty.call(analyzed, v.id);
-                var dotClass = isAnalyzed ? 'done' : 'none';
-                var subtitle = isAnalyzed
-                    ? (analyzed[v.id] + ' ' + t('ckg.concept_count_label') + ' · ' + (v.topic_count || 0) + ' ' + t('topic.label') + ' · ' + formatTime(v.duration || 0))
-                    : (t('ckg.not_analyzed') + ' · ' + (v.topic_count || 0) + ' ' + t('topic.label') + ' · ' + formatTime(v.duration || 0));
-                item.innerHTML =
-                    '<div class="status-dot ' + dotClass + '"></div>' +
-                    '<div class="flex-1 min-w-0">' +
-                    '<p class="truncate font-medium text-surface-700 text-[10px]">' + (v.name || t('unnamed_video')) + '</p>' +
-                    '<p class="text-surface-400 text-[9px]">' + subtitle + '</p>' +
-                    '</div>';
-
-                item.addEventListener('click', function () {
-                    document.querySelectorAll('#ckg-video-list [data-ckg-video]').forEach(function (el) { el.classList.remove('active'); });
-                    item.classList.add('active');
-                    ckgSelectedVideoId = v.id;
-                    onCKGVideoSelect(v.id);
-                });
-                listEl.appendChild(item);
-            });
+            ckgVideoListCache = videos || [];
+            ckgAnalyzedMap = analyzed;
+            renderCkgVideoList();
         } catch (err) {
             console.error('loadCKGVideos error:', err);
         }
@@ -4079,14 +4449,50 @@
         }, 0);
     }
 
+    // ---- 画像范围（P3）：null = 全库（历史行为），数字 = 某教师 ----
+    var _profileTeacherId = null;
+
+    async function _ensureProfileScopeBar() {
+        var bar = document.getElementById('profile-scope-bar');
+        var sel = document.getElementById('profile-teacher-select');
+        if (!bar || !sel) return;
+        var teachers = [];
+        try {
+            var resp = await fetch('/api/outline/teachers');
+            if (resp.ok) teachers = await resp.json();
+        } catch (e) { /* 教师数据不可用时隐藏作用域栏，画像退回全库 */ }
+        if (!teachers.length) { bar.style.display = 'none'; _profileTeacherId = null; return; }
+        bar.style.display = '';
+        sel.innerHTML = '';
+        var optAll = document.createElement('option');
+        optAll.value = '';
+        optAll.textContent = t('profile.scope_all');
+        sel.appendChild(optAll);
+        teachers.forEach(function (te) {
+            var o = document.createElement('option');
+            o.value = te.id;
+            o.textContent = te.name;
+            sel.appendChild(o);
+        });
+        sel.value = _profileTeacherId == null ? '' : String(_profileTeacherId);
+        sel.onchange = function () {
+            _profileTeacherId = sel.value === '' ? null : parseInt(sel.value, 10);
+            renderProfile();
+        };
+    }
+
     async function renderProfile() {
         var emptyEl = document.getElementById('profile-empty');
         var contentEl = document.getElementById('profile-content');
         if (!emptyEl || !contentEl) return;
 
+        await _ensureProfileScopeBar();
+
         var data = null;
         try {
-            var resp = await fetch('/api/outline/ckg/profile');
+            var url = '/api/outline/ckg/profile'
+                + (_profileTeacherId != null ? '?teacher_id=' + _profileTeacherId : '');
+            var resp = await fetch(url);
             if (resp.ok) { data = await resp.json(); }
         } catch (err) {
             console.error('renderProfile fetch error:', err);
@@ -4115,6 +4521,12 @@
             var cr = await fetch('/api/outline/ckg');
             _profileCorpus = cr.ok ? await cr.json() : [];
         } catch (e) { _profileCorpus = []; }
+        // 按教师作用域过滤（/api/outline/ckg 追加了 teacher_id 归属字段）
+        if (_profileTeacherId != null) {
+            _profileCorpus = _profileCorpus.filter(function (r) {
+                return r.teacher_id === _profileTeacherId;
+            });
+        }
         var sel = document.getElementById('profile-video-select');
         if (sel) {
             sel.innerHTML = '';

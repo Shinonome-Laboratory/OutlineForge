@@ -7,6 +7,7 @@ Shares corpus.db with the corpus module (Function A).
 import asyncio
 import json
 import logging
+import os
 import sqlite3
 import statistics
 import threading
@@ -27,7 +28,10 @@ from fastapi.responses import HTMLResponse, FileResponse, JSONResponse, Streamin
 # ---------------------------------------------------------------------------
 
 PROJECT_ROOT = Path(__file__).resolve().parent
-DB_PATH = Path(r"d:\Project\All for Style\00-data\corpus.db")
+# OUTLINE_DB_PATH 覆盖共享生产库路径（测试隔离用，与 01/03 的 env 兜底模式一致）
+DB_PATH = Path(os.environ.get(
+    "OUTLINE_DB_PATH", r"d:\Project\All for Style\00-data\corpus.db"
+))
 HTML_PATH = PROJECT_ROOT / "outline.html"
 DB_VIEWER_PATH = PROJECT_ROOT / "db-viewer-02outline.html"
 
@@ -573,6 +577,10 @@ def push_log_event(
 ) -> None:
     """Push a structured event directly to the SSE log queue.
 
+    ⚠ 签名冲突警告：03-actions 也有同名函数 ``push_log_event``，但签名不同
+    （02 传 ``message: str``，03 传 dict payload）。若未来抽公共库，两者不可
+    直接合并——必须先统一签名或改名。
+
     This bypasses the Python logging module entirely, allowing callers to
     emit custom categories (``success``, ``progress``) that don't map to
     standard log levels.
@@ -739,6 +747,16 @@ async def run_sql(request: Request):
 # ---------------------------------------------------------------------------
 
 
+@app.get("/api/outline/config-defaults")
+async def get_config_defaults():
+    """配置默认值单一真相源（db-viewer 用）。
+
+    内嵌在 db-viewer 里的副本曾经过期漂移（含已废弃的 ob_max_topics），01 的
+    db-viewer 修过同类问题——统一改为前端 fetch 此端点。
+    """
+    return [[k, v] for k, v in (*OB_CONFIG_DEFAULTS, *CK_CONFIG_DEFAULTS)]
+
+
 @app.get("/api/outline/config")
 async def get_config():
     """Return all ob_ prefix config keys as a {key: value} JSON object."""
@@ -883,14 +901,22 @@ async def get_ollama_models():
 
 @app.get("/api/outline/videos")
 async def get_videos():
-    """Return all videos with status='done', including paragraph count."""
+    """Return all videos with status='done', including paragraph count.
+
+    每个视频带归属字段 course_id / course_name / teacher_id / teacher_name
+    （未分类视频全为 NULL）。此处 courses 指教师开设的一门课（teacher_course，
+    01 建模），与 02 自己的 course_topics（单节课内容）无关，勿混淆。
+    """
     conn = get_db(str(DB_PATH))
     rows = conn.execute(
-        "SELECT v.id, v.name, v.duration, "
+        "SELECT v.id, v.name, v.duration, v.course_id, "
+        "       c.name AS course_name, c.teacher_id, t.name AS teacher_name, "
         "       COALESCE(p.cnt, 0) AS paragraph_count, "
-        "       COALESCE(t.cnt, 0) AS topic_count, "
-        "       COALESCE(t.done, 0) AS subtree_count "
+        "       COALESCE(tc.cnt, 0) AS topic_count, "
+        "       COALESCE(tc.done, 0) AS subtree_count "
         "FROM videos v "
+        "LEFT JOIN courses  c ON c.id = v.course_id "
+        "LEFT JOIN teachers t ON t.id = c.teacher_id "
         "LEFT JOIN ("
         "    SELECT video_id, COUNT(*) AS cnt "
         "    FROM corpus_paragraphs "
@@ -900,12 +926,124 @@ async def get_videos():
         "    SELECT video_id, COUNT(*) AS cnt, COUNT(subtree_json) AS done "
         "    FROM course_topics "
         "    GROUP BY video_id"
-        ") t ON v.id = t.video_id "
+        ") tc ON v.id = tc.video_id "
         "WHERE v.status = 'done' "
         "ORDER BY v.id"
     ).fetchall()
     conn.close()
     return [dict(row) for row in rows]
+
+
+# ---------------------------------------------------------------------------
+# Teachers — 教师档案（只读，P2）
+# ---------------------------------------------------------------------------
+# teachers / courses 由 01-corpus 独家建模与写入，02 只读消费（HANDOFF01-teachers
+# §2）；编辑入口在 01（http://localhost:8000）。此处 courses = 教师开设的一门课
+# （teacher_course），与 02 自己的 course_topics / course_ckg 里的 "course"
+# （= 单个视频的一节课）没有任何外键关系——后者只能经 videos 中转 JOIN 到
+# courses，绝不可直连（HANDOFF01-teachers §6-1）。
+
+_OB_TEACHER_SELECT = """
+    SELECT t.id, t.name, t.title, t.affiliation, t.email, t.note, t.created_at,
+           (SELECT COUNT(*) FROM courses c
+             WHERE c.teacher_id = t.id) AS course_count,
+           (SELECT COUNT(*) FROM videos v
+              JOIN courses c ON c.id = v.course_id
+             WHERE c.teacher_id = t.id) AS video_count,
+           (SELECT COUNT(*) FROM corpus_paragraphs cp
+              JOIN videos v  ON v.id = cp.video_id
+              JOIN courses c ON c.id = v.course_id
+             WHERE c.teacher_id = t.id) AS para_count,
+           (SELECT COUNT(*) FROM course_ckg k
+              JOIN videos v  ON v.id = k.video_id
+              JOIN courses c ON c.id = v.course_id
+             WHERE c.teacher_id = t.id) AS extracted_count,
+           (SELECT COALESCE(SUM(v.duration), 0) FROM videos v
+              JOIN courses c ON c.id = v.course_id
+             WHERE c.teacher_id = t.id) AS total_duration
+      FROM teachers t
+"""
+
+
+@app.get("/api/outline/teachers")
+async def get_teachers():
+    """Return all teachers with aggregate stats (read-only).
+
+    02 特有列 ``extracted_count`` = 该教师已抽取 CKG 的课数；其余聚合列与 01
+    的 ``_TEACHER_SELECT`` 同构。
+    """
+    conn = get_db(str(DB_PATH))
+    try:
+        rows = conn.execute(_OB_TEACHER_SELECT + " ORDER BY t.name").fetchall()
+    finally:
+        conn.close()
+    return [dict(r) for r in rows]
+
+
+@app.get("/api/outline/teachers/{teacher_id}/ck-profile")
+async def get_teacher_ck_profile(teacher_id: int):
+    """某教师的 CK 分析档案：基本信息 + 每门课的 CK 统计 + CKG 指标均值。
+
+    每门课的均值用标量子查询逐列聚合（01 的 ``_COURSE_SELECT`` 模式）——不能
+    把 course_topics 与 course_ckg 同时 LEFT JOIN 再 AVG，行叉积会让话题多的
+    视频在均值里被重复加权。RETIRED 列（density / avg_path_length /
+    clustering）不消费。
+    """
+    conn = get_db(str(DB_PATH))
+    try:
+        teacher = conn.execute(
+            _OB_TEACHER_SELECT + " WHERE t.id = ?", (teacher_id,)
+        ).fetchone()
+        if teacher is None:
+            raise HTTPException(status_code=404, detail="Teacher not found")
+
+        _ckg_scalar = (
+            "(SELECT {expr} FROM course_ckg k "
+            "  JOIN videos v ON v.id = k.video_id "
+            " WHERE v.course_id = c.id)"
+        )
+        course_sql = (
+            "SELECT c.id, c.name, c.semester, c.note, c.created_at, "
+            "  (SELECT COUNT(*) FROM videos v WHERE v.course_id = c.id) "
+            "    AS video_count, "
+            "  (SELECT COUNT(*) FROM course_topics ct "
+            "     JOIN videos v ON v.id = ct.video_id "
+            "    WHERE v.course_id = c.id) AS topic_count, "
+            + _ckg_scalar.format(expr="COUNT(*)") + " AS extracted_count, "
+            + _ckg_scalar.format(expr="AVG(k.depth)") + " AS avg_depth, "
+            + _ckg_scalar.format(expr="AVG(k.branch_factor)")
+            + " AS avg_branch_factor, "
+            + _ckg_scalar.format(expr="AVG(k.convergence_count)")
+            + " AS avg_convergence_count, "
+            + _ckg_scalar.format(expr="AVG(k.relation_density)")
+            + " AS avg_relation_density, "
+            + _ckg_scalar.format(expr="AVG(k.bottomup_ratio)")
+            + " AS avg_bottomup_ratio "
+            "FROM courses c WHERE c.teacher_id = ? ORDER BY c.name"
+        )
+        courses = conn.execute(course_sql, (teacher_id,)).fetchall()
+
+        means = conn.execute(
+            "SELECT AVG(k.depth)             AS depth, "
+            "       AVG(k.branch_factor)     AS branch_factor, "
+            "       AVG(k.convergence_count) AS convergence_count, "
+            "       AVG(k.relation_density)  AS relation_density, "
+            "       AVG(k.bottomup_ratio)    AS bottomup_ratio, "
+            "       COUNT(*)                 AS n_videos "
+            "FROM course_ckg k "
+            "JOIN videos  v ON v.id = k.video_id "
+            "JOIN courses c ON c.id = v.course_id "
+            "WHERE c.teacher_id = ?",
+            (teacher_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    return {
+        "teacher": dict(teacher),
+        "courses": [dict(r) for r in courses],
+        "ckg_means": dict(means) if means else None,
+    }
 
 
 @app.get("/api/outline/video/{video_id}/paragraphs")
@@ -3279,12 +3417,16 @@ async def get_corpus_ckg():
     """
     conn = get_db(str(DB_PATH))
     try:
+        # 归属字段（course_id / teacher_id）是追加列：tc = teacher_course
+        # （01 的 courses 表，≠ 02 的 course_topics），未分类视频时为 NULL。
         rows = conn.execute(
             "SELECT c.video_id, v.name AS name, c.model, c.created_at, "
             "c.depth, c.branch_factor, c.convergence_count, c.density, "
-            "c.avg_path_length, c.clustering, c.bottomup_ratio, c.graph_json "
+            "c.avg_path_length, c.clustering, c.bottomup_ratio, c.graph_json, "
+            "v.course_id, tc.teacher_id "
             "FROM course_ckg c "
             "LEFT JOIN videos v ON v.id = c.video_id "
+            "LEFT JOIN courses tc ON tc.id = v.course_id "
             "ORDER BY c.video_id"
         ).fetchall()
     finally:
@@ -3328,6 +3470,8 @@ async def get_corpus_ckg():
                 "bottomup_ratio": row["bottomup_ratio"],
                 "concept_count": concept_count,
                 "edge_count": edge_count,
+                "course_id": row["course_id"],
+                "teacher_id": row["teacher_id"],
             }
         )
     return result
@@ -3502,20 +3646,35 @@ def _build_profile_descriptor(means: dict) -> dict:
     }
 
 
-def _aggregate_ckg_profile() -> dict:
-    """Aggregate the *entire* ``course_ckg`` corpus into one teacher style card.
+def _aggregate_ckg_profile(teacher_id: int | None = None) -> dict:
+    """Aggregate ``course_ckg`` into one teacher style card.
+
+    ``teacher_id=None``（缺省）＝全库聚合（含未分类视频），与历史行为一致；
+    传入教师 id 时经 videos 中转 JOIN 到 courses 过滤（INNER JOIN 天然排除
+    course_id IS NULL 的未分类视频——按教师聚合时正是想要的语义）。
 
     Shared by ``GET /api/outline/ckg/profile`` and ``POST .../lesson-gen``:
-    both need the same whole-corpus mean/sd + style descriptor. See the
-    endpoint docstring below for the field semantics.
+    both need the same mean/sd + style descriptor. See the endpoint docstring
+    below for the field semantics.
     """
     conn = get_db(str(DB_PATH))
     try:
-        rows = conn.execute(
-            "SELECT graph_json, depth, branch_factor, convergence_count, "
-            "relation_density, bottomup_ratio "
-            "FROM course_ckg"
-        ).fetchall()
+        if teacher_id is None:
+            rows = conn.execute(
+                "SELECT graph_json, depth, branch_factor, convergence_count, "
+                "relation_density, bottomup_ratio "
+                "FROM course_ckg"
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT k.graph_json, k.depth, k.branch_factor, "
+                "k.convergence_count, k.relation_density, k.bottomup_ratio "
+                "FROM course_ckg k "
+                "JOIN videos  v ON v.id = k.video_id "
+                "JOIN courses c ON c.id = v.course_id "
+                "WHERE c.teacher_id = ?",
+                (teacher_id,),
+            ).fetchall()
     finally:
         conn.close()
 
@@ -3576,21 +3735,26 @@ def _aggregate_ckg_profile() -> dict:
 
 
 @app.get("/api/outline/ckg/profile")
-async def get_ckg_profile():
-    """Aggregate the *entire* ``course_ckg`` corpus into one teacher style card.
+async def get_ckg_profile(teacher_id: int | None = None):
+    """Aggregate ``course_ckg`` into one teacher style card.
 
-    Current data is all one teacher (Andrew Ng), so the whole-table aggregate
-    *is* that teacher's content-organisation profile. For each topology param
-    we report ``mean`` and (population) ``sd`` across lectures, plus
-    ``node_count`` (from ``len(concepts)`` per row). ``bottomup_ratio`` rows
-    that are ``null`` are skipped *for that param only* (not coerced to 0).
+    ``?teacher_id=`` 可选：缺省＝全库聚合（向后兼容的历史行为，含未分类视频）；
+    给定教师 id 时只聚合该教师名下课程的视频。当前生产库 113 个视频全属同一位
+    教师，两种作用域数值一致；录入第二位教师后 within/between 对比自动成立。
+
+    For each topology param we report ``mean`` and (population) ``sd`` across
+    lectures, plus ``node_count`` (from ``len(concepts)`` per row).
+    ``bottomup_ratio`` rows that are ``null`` are skipped *for that param only*
+    (not coerced to 0).
 
     Empty corpus → ``{"lecture_count": 0, ...}`` (front-end shows empty state).
     """
-    profile = _aggregate_ckg_profile()
+    profile = _aggregate_ckg_profile(teacher_id)
     # ``means`` is an internal aggregate used by lesson-gen; not part of the
     # public profile contract — strip it so the response shape is unchanged.
     profile.pop("means", None)
+    if teacher_id is not None:
+        profile["teacher_id"] = teacher_id
     return profile
 
 

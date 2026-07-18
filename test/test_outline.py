@@ -171,7 +171,16 @@ EXPECTED_OB_CONFIG = {
 
 
 def test_ob_config_keys_exist():
-    """All 5 ob_ config keys are present in the config table."""
+    """All seeded ob_ config keys exist in the config table, non-empty.
+
+    Keys are derived from ``OB_CONFIG_DEFAULTS`` (single source of truth) so
+    the test can't rot when a key is added. Exact values are NOT asserted:
+    every ob_ key is user-editable via the config panel, and the prompts are
+    additionally auto-migrated by ``init_db`` — pinning values makes the test
+    fail as soon as the user tweaks any setting.
+    """
+    from main_outline import OB_CONFIG_DEFAULTS
+
     conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
     rows = conn.execute(
@@ -181,18 +190,11 @@ def test_ob_config_keys_exist():
 
     actual = {row["key"]: row["value"] for row in rows}
 
-    assert set(actual.keys()) == set(EXPECTED_OB_CONFIG.keys()), (
-        f"ob_ config keys mismatch:\n"
-        f"  expected: {sorted(EXPECTED_OB_CONFIG.keys())}\n"
-        f"  got:      {sorted(actual.keys())}"
-    )
-
-    for key, expected_value in EXPECTED_OB_CONFIG.items():
-        assert actual[key] == expected_value, (
-            f"Config key '{key}' value mismatch:\n"
-            f"  expected: {expected_value!r}\n"
-            f"  got:      {actual[key]!r}"
+    for key, _default in OB_CONFIG_DEFAULTS:
+        assert key in actual, (
+            f"Missing config key: {key}\n  got: {sorted(actual.keys())}"
         )
+        assert (actual[key] or "").strip(), f"Empty config value: {key}"
 
 
 # ---------------------------------------------------------------------------

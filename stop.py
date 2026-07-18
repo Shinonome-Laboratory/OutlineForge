@@ -68,39 +68,37 @@ if os.path.exists(PID_FILE):
         ))
 
 # ---------------------------------------------------------------------------
-# 方案 2：通过进程名查找并终止 uvicorn
+# 方案 2：按进程命令行匹配并终止 uvicorn
+# wmic 在 Win11 24H2+ 已被移除（调用会静默失效），改用 PowerShell 的
+# Get-CimInstance 一次性取回全部 python.exe 命令行。
 # ---------------------------------------------------------------------------
 try:
     result = subprocess.run(
-        ["tasklist", "/FI", "IMAGENAME eq python.exe", "/FO", "CSV", "/NH"],
-        capture_output=True, text=True, timeout=10,
+        ["powershell", "-NoProfile", "-Command",
+         "Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" | "
+         "ForEach-Object { \"$($_.ProcessId)`t$($_.CommandLine)\" }"],
+        capture_output=True, text=True, timeout=15, errors="replace",
     )
-    if result.returncode == 0 and result.stdout.strip():
-        lines = result.stdout.strip().split("\n")
-        for line in lines:
-            parts = line.replace('"', "").split(",")
-            if len(parts) >= 2:
-                try:
-                    pid = int(parts[1].strip())
-                except ValueError:
-                    continue
-                try:
-                    cmd_result = subprocess.run(
-                        ["wmic", "process", "where", f"ProcessId={pid}",
-                         "get", "CommandLine"],
-                        capture_output=True, text=True, timeout=5,
-                    )
-                    cmdline = cmd_result.stdout.lower()
-                    if ("uvicorn" in cmdline or MAIN_MODULE in cmdline):
-                        os.kill(pid, signal.SIGTERM)
-                        print(T(
-                            f"✅ 已终止 uvicorn 进程 (PID {pid})",
-                            f"✅ uvicorn プロセスを終了しました (PID {pid})",
-                            f"✅ Killed uvicorn process (PID {pid})",
-                        ))
-                        killed_any = True
-                except Exception:
-                    pass
+    for line in (result.stdout or "").splitlines():
+        parts = line.split("\t", 1)
+        if len(parts) != 2:
+            continue
+        try:
+            pid = int(parts[0].strip())
+        except ValueError:
+            continue
+        cmdline = (parts[1] or "").lower()
+        if ("uvicorn" in cmdline or MAIN_MODULE in cmdline) and pid != os.getpid():
+            try:
+                os.kill(pid, signal.SIGTERM)
+                print(T(
+                    f"✅ 已终止 uvicorn 进程 (PID {pid})",
+                    f"✅ uvicorn プロセスを終了しました (PID {pid})",
+                    f"✅ Killed uvicorn process (PID {pid})",
+                ))
+                killed_any = True
+            except Exception:
+                pass
 except Exception:
     pass
 

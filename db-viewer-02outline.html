@@ -457,13 +457,21 @@ const SCHEMA = {
   },
 };
 
-const CONFIG_DEFAULTS = [
-  ['ob_llm_model',        'qwen2.5:14b-instruct'],
-  ['ob_llm_temperature',  '0.0'],
-  ['ob_max_topics',       'auto'],
-  ['ob_prompt_round1',    'You are an expert curriculum designer and instructional analyst. Below is the complete transcript of a classroom lecture…'],
-  ['ob_prompt_round2',    'You are a subject knowledge structure analyst. Below is the teaching content for the topic…'],
-];
+// 配置默认值：单一真相源是后端 GET /api/outline/config-defaults（内嵌副本曾经
+// 过期漂移——5 键 vs 后端 7 键，且含已废弃的 ob_max_topics，与 01 db-viewer 修过
+// 的同类问题一致）。启动时 fetch，后端不可达（如 file:// 直开）则该区块留空。
+let CONFIG_DEFAULTS = [];
+
+async function loadConfigDefaults() {
+  try {
+    const resp = await fetch('/api/outline/config-defaults');
+    if (resp.ok) {
+      CONFIG_DEFAULTS = await resp.json();
+      renderConfigCard();
+    }
+  } catch (e) { /* backend unreachable — leave the section empty */ }
+}
+loadConfigDefaults();
 
 // ═══ Render schema sidebar ═══
 // Discover ALL real tables from the loaded DB (falling back to the static
@@ -506,6 +514,14 @@ function getTableDef(tname) {
   return def;
 }
 
+function renderConfigCard() {
+  const cfgCard = document.getElementById('config-card');
+  if (!cfgCard) return;
+  cfgCard.innerHTML = CONFIG_DEFAULTS.map(([k, v]) =>
+    `<div class="kv"><span class="key">${k}</span><span class="val">${v.length > 60 ? v.slice(0,60)+'…' : v}</span></div>`
+  ).join('');
+}
+
 function renderSchema() {
   const container = document.getElementById('schema-cards');
   let html = '';
@@ -538,11 +554,8 @@ function renderSchema() {
   }
   container.innerHTML = html;
 
-  // Config defaults
-  const cfgCard = document.getElementById('config-card');
-  cfgCard.innerHTML = CONFIG_DEFAULTS.map(([k, v]) =>
-    `<div class="kv"><span class="key">${k}</span><span class="val">${v.length > 60 ? v.slice(0,60)+'…' : v}</span></div>`
-  ).join('');
+  // Config defaults (fetched from the backend single source of truth)
+  renderConfigCard();
 }
 
 renderSchema();
