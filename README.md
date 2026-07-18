@@ -12,7 +12,7 @@
   <img src="https://img.shields.io/badge/Vibe%20Coding-100%25-blueviolet" alt="Vibe Coding">
 </p>
 
-<p align="center">Sibling project: <a href="https://github.com/Shinonome-Laboratory/CorpusForge">📝 CorpusForge <code>corpus</code></a> — Function A, the upstream corpus pipeline that feeds this project.</p>
+<p align="center">Sibling project: <a href="https://github.com/Shinonome-Laboratory/CorpusForge">📝 CorpusForge <code>corpus</code></a> — the upstream corpus pipeline that feeds this project.</p>
 
 ---
 
