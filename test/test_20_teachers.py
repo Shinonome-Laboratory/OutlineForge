@@ -186,6 +186,33 @@ def test_profile_teacher_scope_matches_whole_corpus_when_single_teacher(client):
     assert scoped.get("style_label") == whole.get("style_label")
 
 
+def test_profile_course_scope_matches_teacher_scope_when_single_course(client):
+    """Course-level scope (teacher → course hierarchy): while a teacher has
+    exactly one course, course scope must equal teacher scope numerically."""
+    teachers = client.get("/api/outline/teachers").json()
+    if not teachers:
+        pytest.skip("no teachers in seed DB")
+    tid = teachers[0]["id"]
+    courses = client.get(f"/api/outline/teachers/{tid}/ck-profile").json()["courses"]
+    if len(courses) != 1:
+        pytest.skip("teacher has != 1 course")
+    cid = courses[0]["id"]
+
+    by_teacher = client.get(f"/api/outline/ckg/profile?teacher_id={tid}").json()
+    by_course = client.get(
+        f"/api/outline/ckg/profile?teacher_id={tid}&course_id={cid}"
+    ).json()
+    assert by_course["course_id"] == cid
+    assert by_course["lecture_count"] == by_teacher["lecture_count"]
+    assert by_course["params"] == by_teacher["params"]
+
+
+def test_profile_unknown_course_is_empty(client):
+    resp = client.get("/api/outline/ckg/profile?course_id=999999")
+    assert resp.status_code == 200
+    assert resp.json()["lecture_count"] == 0
+
+
 def test_profile_unknown_teacher_is_empty(client):
     resp = client.get("/api/outline/ckg/profile?teacher_id=999999")
     assert resp.status_code == 200

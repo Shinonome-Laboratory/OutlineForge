@@ -3646,12 +3646,18 @@ def _build_profile_descriptor(means: dict) -> dict:
     }
 
 
-def _aggregate_ckg_profile(teacher_id: int | None = None) -> dict:
+def _aggregate_ckg_profile(
+    teacher_id: int | None = None, course_id: int | None = None
+) -> dict:
     """Aggregate ``course_ckg`` into one teacher style card.
 
-    ``teacher_id=None``（缺省）＝全库聚合（含未分类视频），与历史行为一致；
-    传入教师 id 时经 videos 中转 JOIN 到 courses 过滤（INNER JOIN 天然排除
-    course_id IS NULL 的未分类视频——按教师聚合时正是想要的语义）。
+    作用域三级（由粗到细）：
+    - 都不传（缺省）＝全库聚合（含未分类视频），与历史行为一致；
+    - ``teacher_id``＝该教师全部课程的视频；
+    - ``course_id``＝该门课（teacher_course）的视频，最细粒度，优先生效。
+
+    经 videos 中转 JOIN 过滤（INNER JOIN 天然排除 course_id IS NULL 的未分类
+    视频——按教师/课程聚合时正是想要的语义）。
 
     Shared by ``GET /api/outline/ckg/profile`` and ``POST .../lesson-gen``:
     both need the same mean/sd + style descriptor. See the endpoint docstring
@@ -3659,13 +3665,16 @@ def _aggregate_ckg_profile(teacher_id: int | None = None) -> dict:
     """
     conn = get_db(str(DB_PATH))
     try:
-        if teacher_id is None:
+        if course_id is not None:
             rows = conn.execute(
-                "SELECT graph_json, depth, branch_factor, convergence_count, "
-                "relation_density, bottomup_ratio "
-                "FROM course_ckg"
+                "SELECT k.graph_json, k.depth, k.branch_factor, "
+                "k.convergence_count, k.relation_density, k.bottomup_ratio "
+                "FROM course_ckg k "
+                "JOIN videos v ON v.id = k.video_id "
+                "WHERE v.course_id = ?",
+                (course_id,),
             ).fetchall()
-        else:
+        elif teacher_id is not None:
             rows = conn.execute(
                 "SELECT k.graph_json, k.depth, k.branch_factor, "
                 "k.convergence_count, k.relation_density, k.bottomup_ratio "
@@ -3674,6 +3683,12 @@ def _aggregate_ckg_profile(teacher_id: int | None = None) -> dict:
                 "JOIN courses c ON c.id = v.course_id "
                 "WHERE c.teacher_id = ?",
                 (teacher_id,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT graph_json, depth, branch_factor, convergence_count, "
+                "relation_density, bottomup_ratio "
+                "FROM course_ckg"
             ).fetchall()
     finally:
         conn.close()
@@ -3735,12 +3750,15 @@ def _aggregate_ckg_profile(teacher_id: int | None = None) -> dict:
 
 
 @app.get("/api/outline/ckg/profile")
-async def get_ckg_profile(teacher_id: int | None = None):
+async def get_ckg_profile(
+    teacher_id: int | None = None, course_id: int | None = None
+):
     """Aggregate ``course_ckg`` into one teacher style card.
 
-    ``?teacher_id=`` 可选：缺省＝全库聚合（向后兼容的历史行为，含未分类视频）；
-    给定教师 id 时只聚合该教师名下课程的视频。当前生产库 113 个视频全属同一位
-    教师，两种作用域数值一致；录入第二位教师后 within/between 对比自动成立。
+    作用域可选参数（层级：教师 → 课程）：缺省＝全库聚合（向后兼容的历史行为，
+    含未分类视频）；``?teacher_id=`` 聚合该教师全部课程；再加 ``?course_id=``
+    细化到该门课（teacher_course）。当前生产库 113 个视频全属同一位教师的同
+    一门课，三种作用域数值一致；录入第二位教师后 within/between 对比自动成立。
 
     For each topology param we report ``mean`` and (population) ``sd`` across
     lectures, plus ``node_count`` (from ``len(concepts)`` per row).
@@ -3749,12 +3767,14 @@ async def get_ckg_profile(teacher_id: int | None = None):
 
     Empty corpus → ``{"lecture_count": 0, ...}`` (front-end shows empty state).
     """
-    profile = _aggregate_ckg_profile(teacher_id)
+    profile = _aggregate_ckg_profile(teacher_id, course_id)
     # ``means`` is an internal aggregate used by lesson-gen; not part of the
     # public profile contract — strip it so the response shape is unchanged.
     profile.pop("means", None)
     if teacher_id is not None:
         profile["teacher_id"] = teacher_id
+    if course_id is not None:
+        profile["course_id"] = course_id
     return profile
 
 

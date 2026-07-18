@@ -545,10 +545,11 @@
     <!-- 空白页壳：风格画像卡（雷达图等后续任务填充）     -->
     <!-- ═══════════════════════════════════════════════ -->
     <div id="page-profile" class="flex-1 flex flex-col overflow-y-auto bg-surface-50" style="display:none;">
-      <!-- 画像范围：全库 / 按教师（P3 作用域化；教师数据由 01 维护，02 只读） -->
+      <!-- 画像范围：全库 → 教师 → 课程 两级下拉（P3 作用域化；教师/课程数据由 01 维护，02 只读） -->
       <div id="profile-scope-bar" class="max-w-4xl w-full mx-auto px-6 pt-4 flex items-center gap-2" style="display:none;">
         <span class="text-[10px] text-surface-400" data-i18n="profile.scope_label">画像范围</span>
         <select id="profile-teacher-select" class="text-[11px] border border-surface-200 rounded-md px-2 py-0.5 bg-white"></select>
+        <select id="profile-course-select" class="text-[11px] border border-surface-200 rounded-md px-2 py-0.5 bg-white" style="display:none;"></select>
       </div>
       <!-- Empty state (lecture_count === 0) -->
       <div id="profile-empty" class="flex-1 flex flex-col items-center justify-center text-center text-surface-300 select-none" style="display:none;">
@@ -988,6 +989,7 @@
             'teacher.avg_depth': '平均拆解深度',
             'profile.scope_label': '画像范围',
             'profile.scope_all': '全库（全部课）',
+            'profile.scope_all_courses': '该教师全部课程',
             'unnamed_video': '未命名视频',
             'upload_btn': '+ 上传视频',
             'video.not_installed': ' (未安装)',
@@ -1287,6 +1289,7 @@
             'teacher.avg_depth': 'Avg depth',
             'profile.scope_label': 'Scope',
             'profile.scope_all': 'Whole corpus',
+            'profile.scope_all_courses': 'All courses of this teacher',
             'unnamed_video': 'Unnamed',
             'upload_btn': '+ Upload',
             'video.not_installed': ' (not installed)',
@@ -1585,6 +1588,7 @@
             'teacher.avg_depth': '平均分解深度',
             'profile.scope_label': '対象範囲',
             'profile.scope_all': '全体（全講義）',
+            'profile.scope_all_courses': 'この教師の全コース',
             'unnamed_video': '無名',
             'upload_btn': '+ アップロード',
             'video.not_installed': ' (未インストール)',
@@ -4449,8 +4453,47 @@
         }, 0);
     }
 
-    // ---- 画像范围（P3）：null = 全库（历史行为），数字 = 某教师 ----
-    var _profileTeacherId = null;
+    // ---- 画像范围（P3）：层级选择 全库 → 教师 → 课程（teacher_course）----
+    var _profileTeacherId = null;   // null = 全库
+    var _profileCourseId = null;    // null = 该教师全部课程（仅教师选中时有意义）
+
+    async function _populateProfileCourseSelect() {
+        var courseSel = document.getElementById('profile-course-select');
+        if (!courseSel) return;
+        if (_profileTeacherId == null) {
+            courseSel.style.display = 'none';
+            courseSel.innerHTML = '';
+            _profileCourseId = null;
+            return;
+        }
+        var courses = [];
+        try {
+            var resp = await fetch('/api/outline/teachers/' + _profileTeacherId + '/ck-profile');
+            if (resp.ok) courses = (await resp.json()).courses || [];
+        } catch (e) { /* 课程数据不可用时退回教师级作用域 */ }
+        courseSel.innerHTML = '';
+        var optAll = document.createElement('option');
+        optAll.value = '';
+        optAll.textContent = t('profile.scope_all_courses');
+        courseSel.appendChild(optAll);
+        courses.forEach(function (c) {
+            var o = document.createElement('option');
+            o.value = c.id;
+            o.textContent = c.name + (c.semester ? '（' + c.semester + '）' : '');
+            courseSel.appendChild(o);
+        });
+        // 之前选的课程不属于当前教师时重置为全部课程
+        if (_profileCourseId != null &&
+            !courses.some(function (c) { return c.id === _profileCourseId; })) {
+            _profileCourseId = null;
+        }
+        courseSel.value = _profileCourseId == null ? '' : String(_profileCourseId);
+        courseSel.style.display = '';
+        courseSel.onchange = function () {
+            _profileCourseId = courseSel.value === '' ? null : parseInt(courseSel.value, 10);
+            renderProfile();
+        };
+    }
 
     async function _ensureProfileScopeBar() {
         var bar = document.getElementById('profile-scope-bar');
@@ -4461,7 +4504,12 @@
             var resp = await fetch('/api/outline/teachers');
             if (resp.ok) teachers = await resp.json();
         } catch (e) { /* 教师数据不可用时隐藏作用域栏，画像退回全库 */ }
-        if (!teachers.length) { bar.style.display = 'none'; _profileTeacherId = null; return; }
+        if (!teachers.length) {
+            bar.style.display = 'none';
+            _profileTeacherId = null;
+            _profileCourseId = null;
+            return;
+        }
         bar.style.display = '';
         sel.innerHTML = '';
         var optAll = document.createElement('option');
@@ -4477,8 +4525,10 @@
         sel.value = _profileTeacherId == null ? '' : String(_profileTeacherId);
         sel.onchange = function () {
             _profileTeacherId = sel.value === '' ? null : parseInt(sel.value, 10);
+            _profileCourseId = null;   // 换教师后课程作用域重置为全部课程
             renderProfile();
         };
+        await _populateProfileCourseSelect();
     }
 
     async function renderProfile() {
@@ -4490,8 +4540,10 @@
 
         var data = null;
         try {
-            var url = '/api/outline/ckg/profile'
-                + (_profileTeacherId != null ? '?teacher_id=' + _profileTeacherId : '');
+            var qs = [];
+            if (_profileTeacherId != null) qs.push('teacher_id=' + _profileTeacherId);
+            if (_profileCourseId != null) qs.push('course_id=' + _profileCourseId);
+            var url = '/api/outline/ckg/profile' + (qs.length ? '?' + qs.join('&') : '');
             var resp = await fetch(url);
             if (resp.ok) { data = await resp.json(); }
         } catch (err) {
@@ -4521,8 +4573,12 @@
             var cr = await fetch('/api/outline/ckg');
             _profileCorpus = cr.ok ? await cr.json() : [];
         } catch (e) { _profileCorpus = []; }
-        // 按教师作用域过滤（/api/outline/ckg 追加了 teacher_id 归属字段）
-        if (_profileTeacherId != null) {
+        // 按作用域过滤（/api/outline/ckg 追加了 teacher_id / course_id 归属字段）
+        if (_profileCourseId != null) {
+            _profileCorpus = _profileCorpus.filter(function (r) {
+                return r.course_id === _profileCourseId;
+            });
+        } else if (_profileTeacherId != null) {
             _profileCorpus = _profileCorpus.filter(function (r) {
                 return r.teacher_id === _profileTeacherId;
             });
