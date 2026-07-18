@@ -1355,7 +1355,7 @@ def test_round2_inserts_rows_into_course_topics():
     main_outline._analysis_cancel_flags.pop(25, None)
 
     call_count = [0]
-    def mock_ollama(model, prompt, stream=False):
+    def mock_ollama(model, prompt, stream=False, temperature=0.0, **kwargs):
         idx = call_count[0]
         call_count[0] += 1
         return round2_responses[idx]
@@ -1571,7 +1571,7 @@ def test_round2_single_topic_failure_does_not_block_others():
     ]
 
     call_count = [0]
-    def mock_ollama(model, prompt, stream=False):
+    def mock_ollama(model, prompt, stream=False, temperature=0.0, **kwargs):
         idx = call_count[0]
         call_count[0] += 1
         return round2_responses[idx]
@@ -1652,7 +1652,7 @@ def test_round2_cancel_between_topics():
     main_outline._analysis_cancel_flags[25] = False  # running
 
     call_count = [0]
-    def mock_ollama_with_cancel(model, prompt, stream=False):
+    def mock_ollama_with_cancel(model, prompt, stream=False, temperature=0.0, **kwargs):
         idx = call_count[0]
         call_count[0] += 1
         # After the first call (index 0 completes), set cancel flag
@@ -1810,7 +1810,7 @@ def test_round2_ollama_call_failure_per_topic():
     ]
 
     # First topic: Ollama fails. Second topic: succeeds.
-    def mock_ollama_fail_first(model, prompt, stream=False):
+    def mock_ollama_fail_first(model, prompt, stream=False, temperature=0.0, **kwargs):
         if "话题X" in prompt:
             raise Exception("Ollama connection refused")
         return {"response": '{"topic": "话题Y", "subtree": {"children": []}}'}
@@ -1880,7 +1880,7 @@ def test_full_pipeline_runs_round1_then_round2():
     ]
 
     call_count = [0]
-    def mock_ollama(model, prompt, stream=False):
+    def mock_ollama(model, prompt, stream=False, temperature=0.0, **kwargs):
         idx = call_count[0]
         call_count[0] += 1
         # First call is round1
@@ -5103,21 +5103,17 @@ def _seed_profile_row(conn):
 
 @contextmanager
 def _inert_thread():
-    """Patch threading.Thread so POST's daemon worker doesn't auto-run.
+    """Patch submit_job so POST's background worker doesn't auto-run.
 
-    The async lesson-gen endpoint starts a daemon thread; in tests we want to
-    drive ``_run_lesson_gen`` ourselves deterministically (so mock_ollama
-    responses are consumed exactly once). This replaces Thread with a stub
-    whose ``start()`` is a no-op.
+    The async lesson-gen endpoints submit their worker to the bounded job
+    pool; in tests we want to drive ``_run_lesson_gen`` ourselves
+    deterministically (so mock_ollama responses are consumed exactly once).
+    This swallows the submission instead.
+
+    (旧实现 patch ``main_outline.threading.Thread``——那实际改的是全局
+    threading 模块的属性，会连带弄坏线程池的内部线程，勿回退。)
     """
-    class _NoopThread:
-        def __init__(self, *a, **k):
-            pass
-
-        def start(self):
-            pass
-
-    with patch("main_outline.threading.Thread", _NoopThread):
+    with patch("main_outline.submit_job", lambda fn, *a: None):
         yield
 
 
