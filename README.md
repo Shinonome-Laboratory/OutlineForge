@@ -19,7 +19,7 @@
 <details>
 <summary>🇨🇳 中文</summary>
 
-**OutlineForge** 是 "All for Style" 课堂分析系统的 **Function B——课堂内容结构分析**。它读取上游 [CorpusForge](https://github.com/Shinonome-Laboratory/CorpusForge)（Function A）产出的课堂转写语料，用本地 LLM 把一节课的"台本"拆成层级化的知识结构，进而刻画**教师如何组织内容**的风格特征。
+**OutlineForge** 是 "All for Style" 课堂分析系统的**课堂内容结构分析**模块。它读取上游 [CorpusForge](https://github.com/Shinonome-Laboratory/CorpusForge) 产出的课堂转写语料，用本地 LLM 把一节课的"台本"拆成层级化的知识结构，进而刻画**教师如何组织内容**的风格特征。
 
 在"舞台剧模型"中，课堂被解构为双轨时序流：**台本**（教学内容演进）+ **演技**（微观教学动作）。本项目负责台本维度。
 
@@ -42,7 +42,7 @@
 ## 🏗️ 架构总览
 
 ```
-CorpusForge (Function A)                OutlineForge (Function B)
+CorpusForge                             OutlineForge
 ┌─────────────────────┐    corpus.db    ┌──────────────────────────────────┐
 │ 视频 → ASR → 段落化  │ ──────────────▶ │  corpus_paragraphs (只读消费)      │
 └─────────────────────┘   (共享 SQLite)  └──────────────┬───────────────────┘
@@ -84,7 +84,7 @@ python stop.py     # 停止服务
 | 后端 | Python 3 · FastAPI · uvicorn (port 8001) · threading + SSE |
 | 前端 | 单页 HTML · Tailwind CSS（自定义主题）· ECharts 5.5 · 原生 JS |
 | LLM | Ollama `/api/generate` · 默认 `qwen2.5:14b-instruct` · Prompt 在线可编辑 |
-| 存储 | SQLite（与 Function A 共享 `corpus.db`）|
+| 存储 | SQLite（与 CorpusForge 共享 `corpus.db`）|
 | 测试 | pytest · 322 个测试 |
 
 ## 📡 API 端点
@@ -139,7 +139,7 @@ python -m pytest test/ -q
 
 ## 📚 关联文档
 
-- [📝 CorpusForge](https://github.com/Shinonome-Laboratory/CorpusForge) — Function A：视频 → ASR → 段落化语料的上游流水线
+- [📝 CorpusForge](https://github.com/Shinonome-Laboratory/CorpusForge) — 视频 → ASR → 段落化语料的上游流水线
 - [`.scratch/`](.scratch/) — 各功能的 issue 拆解与开发实录
 
 ## 🙏 致谢
@@ -150,7 +150,7 @@ python -m pytest test/ -q
 
 <details open><summary>🇬🇧 English</summary>
 
-**OutlineForge** is **Function B — classroom content structure analysis** — of the "All for Style" classroom analysis system. It consumes the lecture transcripts produced by [CorpusForge](https://github.com/Shinonome-Laboratory/CorpusForge) (Function A) and uses a local LLM to decompose each lesson's "script" into a hierarchical knowledge structure, ultimately characterizing **how a teacher organizes content**.
+**OutlineForge** is the **classroom content structure analysis** module of the "All for Style" classroom analysis system. It consumes the lecture transcripts produced by [CorpusForge](https://github.com/Shinonome-Laboratory/CorpusForge) and uses a local LLM to decompose each lesson's "script" into a hierarchical knowledge structure, ultimately characterizing **how a teacher organizes content**.
 
 In the *Theater Model*, a classroom is decomposed into two parallel temporal streams: the **Script** (progression of teaching content) and the **Performance** (micro-level teaching actions). This project owns the Script dimension.
 
@@ -173,7 +173,7 @@ Honestly: `main_outline.py` is 160k characters. If someone asked me to read it l
 ## 🏗️ Architecture
 
 ```
-CorpusForge (Function A)                OutlineForge (Function B)
+CorpusForge                             OutlineForge
 ┌─────────────────────┐    corpus.db    ┌──────────────────────────────────┐
 │ video → ASR → paras │ ──────────────▶ │  corpus_paragraphs (read-only)    │
 └─────────────────────┘  (shared SQLite)└──────────────┬───────────────────┘
@@ -215,7 +215,7 @@ Typical workflow: pick a transcribed video → **Analyze** (watch progress in th
 | Backend | Python 3 · FastAPI · uvicorn (port 8001) · threading + SSE |
 | Frontend | single-page HTML · Tailwind CSS (custom theme) · ECharts 5.5 · vanilla JS |
 | LLM | Ollama `/api/generate` · default `qwen2.5:14b-instruct` · prompts editable in-app |
-| Storage | SQLite (shares `corpus.db` with Function A) |
+| Storage | SQLite (shares `corpus.db` with CorpusForge) |
 | Testing | pytest · 322 tests |
 
 ## 📡 API Endpoints
@@ -270,7 +270,7 @@ python -m pytest test/ -q
 
 ## 📚 Related Docs
 
-- [📝 CorpusForge](https://github.com/Shinonome-Laboratory/CorpusForge) — Function A: the upstream video → ASR → paragraph pipeline
+- [📝 CorpusForge](https://github.com/Shinonome-Laboratory/CorpusForge) — the upstream video → ASR → paragraph pipeline
 - [`.scratch/`](.scratch/) — per-feature issue breakdowns and development history
 
 ## 🙏 Acknowledgments
@@ -281,7 +281,7 @@ Developed with [Claude Code](https://claude.com/claude-code); thanks to [Ollama]
 
 <details><summary>🇯🇵 日本語</summary>
 
-**OutlineForge** は「All for Style」授業分析システムの **Function B——授業内容の構造分析**です。上流の [CorpusForge](https://github.com/Shinonome-Laboratory/CorpusForge)（Function A）が生成した授業の文字起こしコーパスを読み込み、ローカル LLM で一回の授業の「台本」を階層的な知識構造へ分解し、**教師がどのように内容を組み立てるか**というスタイル特徴を捉えます。
+**OutlineForge** は「All for Style」授業分析システムの**授業内容の構造分析**モジュールです。上流の [CorpusForge](https://github.com/Shinonome-Laboratory/CorpusForge) が生成した授業の文字起こしコーパスを読み込み、ローカル LLM で一回の授業の「台本」を階層的な知識構造へ分解し、**教師がどのように内容を組み立てるか**というスタイル特徴を捉えます。
 
 「舞台劇モデル」では、授業は二本の時系列——**台本**（教育内容の展開）と**演技**（ミクロな教育行動）——に分解されます。本プロジェクトは台本の次元を担当します。
 
@@ -304,7 +304,7 @@ Developed with [Claude Code](https://claude.com/claude-code); thanks to [Ollama]
 ## 🏗️ アーキテクチャ
 
 ```
-CorpusForge (Function A)                OutlineForge (Function B)
+CorpusForge                             OutlineForge
 ┌─────────────────────┐    corpus.db    ┌──────────────────────────────────┐
 │ 動画 → ASR → 段落化  │ ──────────────▶ │  corpus_paragraphs (読み取り専用)   │
 └─────────────────────┘   (共有 SQLite)  └──────────────┬───────────────────┘
@@ -346,7 +346,7 @@ python stop.py     # サービス停止
 | バックエンド | Python 3 · FastAPI · uvicorn (port 8001) · threading + SSE |
 | フロントエンド | シングルページ HTML · Tailwind CSS · ECharts 5.5 · vanilla JS |
 | LLM | Ollama `/api/generate` · 既定 `qwen2.5:14b-instruct` · プロンプトはアプリ内編集可 |
-| ストレージ | SQLite（Function A と `corpus.db` を共有） |
+| ストレージ | SQLite（CorpusForge と `corpus.db` を共有） |
 | テスト | pytest · 322 テスト |
 
 ## 📡 API エンドポイント
@@ -401,7 +401,7 @@ python -m pytest test/ -q
 
 ## 📚 関連ドキュメント
 
-- [📝 CorpusForge](https://github.com/Shinonome-Laboratory/CorpusForge) — Function A：動画 → ASR → 段落化の上流パイプライン
+- [📝 CorpusForge](https://github.com/Shinonome-Laboratory/CorpusForge) — 動画 → ASR → 段落化の上流パイプライン
 - [`.scratch/`](.scratch/) — 機能ごとの issue 分解と開発記録
 
 ## 🙏 謝辞
