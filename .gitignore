@@ -2,3 +2,11 @@ __pycache__/
 *.pyc
 .pytest_cache/
 *.log
+.claude/
+*.db
+*.db-journal
+
+# Internal working docs — not synced to GitHub
+HANDOFF*.md
+中文初稿*.md
+页面布局和UI风格参考.html
